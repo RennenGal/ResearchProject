@@ -724,13 +724,13 @@ class InterProAPIClient:
         except Exception as e:
             raise DataError(f"Failed to parse PFAM family data: {str(e)}")
     
-    def parse_protein_data(self, protein_data: Dict[str, Any], pfam_accession: str) -> InterProProteinModel:
+    def parse_protein_data(self, protein_data: Dict[str, Any], tim_barrel_accession: str) -> InterProProteinModel:
         """
         Parse InterPro API response data into InterProProteinModel.
         
         Args:
             protein_data: Raw protein data from InterPro API
-            pfam_accession: Associated PFAM family accession
+            tim_barrel_accession: Associated TIM barrel entry accession (PFAM or InterPro)
             
         Returns:
             Validated InterProProteinModel instance
@@ -768,7 +768,7 @@ class InterProAPIClient:
             
             return InterProProteinModel(
                 uniprot_id=uniprot_id,
-                pfam_accession=pfam_accession,
+                tim_barrel_accession=tim_barrel_accession,
                 name=name,
                 organism=organism,
                 basic_metadata=basic_metadata
@@ -777,6 +777,102 @@ class InterProAPIClient:
         except Exception as e:
             raise DataError(f"Failed to parse protein data: {str(e)}")
     
+    async def get_proteins_in_interpro_entry(
+        self, 
+        interpro_accession: str, 
+        organism: str = "Homo sapiens",
+        page_size: int = 200
+    ) -> List[Dict[str, Any]]:
+        """
+        Get human proteins belonging to a specific InterPro entry.
+        
+        Args:
+            interpro_accession: InterPro entry accession identifier
+            organism: Target organism (default: Homo sapiens)
+            page_size: Number of results per page
+            
+        Returns:
+            List of protein data dictionaries
+            
+        Raises:
+            APIError: For API-specific errors
+            NetworkError: For network-related errors
+        """
+        async def operation():
+            proteins = []
+            next_url = None
+            page = 1
+            
+            # Query proteins in the InterPro entry filtered by organism
+            params = {
+                'page_size': page_size,
+                'tax_lineage': organism
+            }
+            
+            while True:
+                self.logger.info(
+                    "Fetching proteins for InterPro %s, page %d",
+                    interpro_accession,
+                    page,
+                    extra={
+                        "interpro_accession": interpro_accession,
+                        "organism": organism,
+                        "page": page,
+                        "page_size": page_size
+                    }
+                )
+                
+                endpoint = f'protein/UniProt/entry/interpro/{interpro_accession}/'
+                if next_url:
+                    # Use the next URL provided by the API
+                    response_data = await self._make_request(next_url.replace(self.config.interpro_base_url, ''))
+                else:
+                    response_data = await self._make_request(endpoint, params)
+                
+                # Extract results from response
+                if 'results' in response_data:
+                    page_proteins = response_data['results']
+                    proteins.extend(page_proteins)
+                    
+                    self.logger.info(
+                        "Retrieved %d proteins from page %d for InterPro %s",
+                        len(page_proteins),
+                        page,
+                        interpro_accession,
+                        extra={
+                            "interpro_accession": interpro_accession,
+                            "page": page,
+                            "proteins_in_page": len(page_proteins),
+                            "total_proteins": len(proteins)
+                        }
+                    )
+                
+                # Check for next page
+                next_url = response_data.get('next')
+                if not next_url:
+                    break
+                
+                page += 1
+            
+            self.logger.info(
+                "Completed protein collection for InterPro %s",
+                interpro_accession,
+                extra={
+                    "interpro_accession": interpro_accession,
+                    "total_proteins": len(proteins),
+                    "total_pages": page,
+                    "organism": organism
+                }
+            )
+            
+            return proteins
+        
+        return await self.retry_controller.execute_with_retry_async(
+            operation,
+            database="InterPro",
+            operation_name=f"get_proteins_in_interpro_entry_{interpro_accession}"
+        )
+
     async def get_performance_metrics(self) -> Dict[str, Any]:
         """
         Get comprehensive performance metrics for InterPro API client.
