@@ -1,0 +1,69 @@
+{
+  "database": {
+    "host": "${DATABASE_HOST:localhost}",
+    "port": "${DATABASE_PORT:3306}",
+    "database": "${DATABASE_NAME:protein_collector_dev}",
+    "user": "${DATABASE_USER:protein_user}",
+    "password": "${DATABASE_PASSWORD:protein_password}",
+    "pool_size": 5,
+    "max_overflow": 10,
+    "pool_timeout": 30,
+    "pool_recycle": 3600
+  },
+  "api": {
+    "interpro_base_url": "${INTERPRO_BASE_URL:https://www.ebi.ac.uk/interpro/api/}",
+    "uniprot_base_url": "${UNIPROT_BASE_URL:https://rest.uniprot.org/}",
+    "timeout": 30,
+    "max_connections": 50,
+    "max_keepalive_connections": 10
+  },
+  "retry": {
+    "max_retries": "${MAX_RETRIES:2}",
+    "initial_delay": "${INITIAL_DELAY:0.5}",
+    "backoff_multiplier": "${BACKOFF_MULTIPLIER:1.5}",
+    "max_delay": "${MAX_DELAY:30.0}"
+  },
+  "rate_limiting": {
+    "interpro_requests_per_second": "${INTERPRO_REQUESTS_PER_SECOND:5.0}",
+    "uniprot_requests_per_second": "${UNIPROT_REQUESTS_PER_SECOND:3.0}",
+    "burst_size": 3
+  },
+  "mcp": {
+    "enabled": "${MCP_ENABLED:false}",
+    "server_path": "${MCP_SERVER_PATH:./uniprot-mcp-server}",
+    "timeout": 30,
+    "max_retries": 2
+  },
+  "collection": {
+    "batch_size": "${BATCH_SIZE:50}",
+    "page_size": 100,
+    "max_concurrent_requests": 5,
+    "progress_save_interval": 50
+  },
+  "caching": {
+    "enabled": false,
+    "ttl_hours": "${CACHE_TTL_HOURS:1}",
+    "max_size": 1000,
+    "redis_url": "${REDIS_URL:redis://localhost:6379/0}"
+  },
+  "logging": {
+    "level": "${LOG_LEVEL:DEBUG}",
+    "format": "${LOG_FORMAT:text}",
+    "file": "./logs/protein_collector_dev.log",
+    "max_file_size": "50MB",
+    "backup_count": 3,
+    "structured": false
+  },
+  "monitoring": {
+    "enabled": true,
+    "metrics_port": 9091,
+    "health_check_interval": 60,
+    "performance_tracking": true
+  },
+  "security": {
+    "api_key_required": false,
+    "rate_limit_per_ip": 10000,
+    "cors_origins": ["http://localhost:3000", "http://localhost:8080"],
+    "max_request_size": "50MB"
+  }
+}

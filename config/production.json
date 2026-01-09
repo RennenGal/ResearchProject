@@ -1,0 +1,69 @@
+{
+  "database": {
+    "host": "${DATABASE_HOST:localhost}",
+    "port": "${DATABASE_PORT:3306}",
+    "database": "${DATABASE_NAME:protein_collector}",
+    "user": "${DATABASE_USER:protein_user}",
+    "password": "${DATABASE_PASSWORD:protein_password}",
+    "pool_size": 10,
+    "max_overflow": 20,
+    "pool_timeout": 30,
+    "pool_recycle": 3600
+  },
+  "api": {
+    "interpro_base_url": "${INTERPRO_BASE_URL:https://www.ebi.ac.uk/interpro/api/}",
+    "uniprot_base_url": "${UNIPROT_BASE_URL:https://rest.uniprot.org/}",
+    "timeout": 30,
+    "max_connections": 100,
+    "max_keepalive_connections": 20
+  },
+  "retry": {
+    "max_retries": "${MAX_RETRIES:3}",
+    "initial_delay": "${INITIAL_DELAY:1.0}",
+    "backoff_multiplier": "${BACKOFF_MULTIPLIER:2.0}",
+    "max_delay": "${MAX_DELAY:60.0}"
+  },
+  "rate_limiting": {
+    "interpro_requests_per_second": "${INTERPRO_REQUESTS_PER_SECOND:10.0}",
+    "uniprot_requests_per_second": "${UNIPROT_REQUESTS_PER_SECOND:5.0}",
+    "burst_size": 5
+  },
+  "mcp": {
+    "enabled": "${MCP_ENABLED:true}",
+    "server_path": "${MCP_SERVER_PATH:/opt/uniprot-mcp-server}",
+    "timeout": 30,
+    "max_retries": 3
+  },
+  "collection": {
+    "batch_size": "${BATCH_SIZE:100}",
+    "page_size": 200,
+    "max_concurrent_requests": 10,
+    "progress_save_interval": 100
+  },
+  "caching": {
+    "enabled": true,
+    "ttl_hours": "${CACHE_TTL_HOURS:24}",
+    "max_size": 10000,
+    "redis_url": "${REDIS_URL:redis://localhost:6379/0}"
+  },
+  "logging": {
+    "level": "${LOG_LEVEL:INFO}",
+    "format": "${LOG_FORMAT:json}",
+    "file": "/var/log/protein_collector.log",
+    "max_file_size": "100MB",
+    "backup_count": 5,
+    "structured": true
+  },
+  "monitoring": {
+    "enabled": true,
+    "metrics_port": 9090,
+    "health_check_interval": 30,
+    "performance_tracking": true
+  },
+  "security": {
+    "api_key_required": false,
+    "rate_limit_per_ip": 1000,
+    "cors_origins": ["*"],
+    "max_request_size": "10MB"
+  }
+}

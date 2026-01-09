@@ -1,0 +1,42 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": 3306,
+    "database": "protein_data",
+    "username": "protein_user",
+    "pool_size": 10,
+    "pool_recycle": 3600
+  },
+  "api": {
+    "interpro_base_url": "https://www.ebi.ac.uk/interpro/api/",
+    "uniprot_base_url": "https://rest.uniprot.org/",
+    "interpro_requests_per_second": 10.0,
+    "uniprot_requests_per_second": 5.0,
+    "request_timeout": 30,
+    "connection_timeout": 10
+  },
+  "retry": {
+    "max_retries": 3,
+    "initial_delay": 1.0,
+    "backoff_multiplier": 2.0,
+    "max_delay": 60.0
+  },
+  "mcp": {
+    "enabled": true,
+    "server_path": "/path/to/uniprot-mcp-server",
+    "fallback_to_rest": true
+  },
+  "collection": {
+    "batch_size": 100,
+    "cache_ttl_hours": 24,
+    "enable_progress_tracking": true,
+    "resume_interrupted_collections": true
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "json",
+    "log_file": "/var/log/protein-collector.log",
+    "max_file_size_mb": 100,
+    "backup_count": 5
+  }
+}
