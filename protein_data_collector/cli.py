@@ -341,7 +341,6 @@ def status(ctx):
     click.echo(f"  InterPro API: {config.api.interpro_base_url}")
     click.echo(f"  UniProt API: {config.api.uniprot_base_url}")
     click.echo(f"  Max retries: {config.retry.max_retries}")
-    click.echo(f"  MCP enabled: {config.mcp.enabled}")
     click.echo(f"  Log level: {config.logging.level}")
     
     # Database connectivity check
@@ -394,14 +393,9 @@ def status(ctx):
             click.echo(f"  ✗ UniProt API: HTTP {response.status_code}")
     except Exception as e:
         click.echo(f"  ✗ UniProt API: ERROR - {e}")
-    
-    # MCP server status
-    if config.mcp.enabled:
-        click.echo(f"  MCP server: {config.mcp.server_path}")
-        # TODO: Add MCP server connectivity check when available
-        click.echo("  ? MCP server status: Not checked")
+
     else:
-        click.echo("  MCP server: Disabled")
+        click.echo("  UniProt: REST API only")
 
 
 @cli.command()
@@ -478,10 +472,6 @@ def config_export(ctx, output):
                 "max_retries": config.retry.max_retries,
                 "initial_delay": config.retry.initial_delay,
                 "backoff_multiplier": config.retry.backoff_multiplier
-            },
-            "mcp": {
-                "enabled": config.mcp.enabled,
-                "server_path": config.mcp.server_path
             }
         }
         click.echo(json.dumps(config_dict, indent=2))

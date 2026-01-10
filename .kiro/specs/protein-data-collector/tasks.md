@@ -75,12 +75,12 @@ This implementation plan breaks down the protein data collector system into disc
     - **Property 3: Human Organism Filtering**
     - **Validates: Requirements 2.2**
 
-- [x] 6. Implement UniProt integration with MCP fallback
+- [x] 6. Implement UniProt REST API integration
   - [x] 6.1 Create unified UniProt API client
-    - Implement MCP server integration for UniProt queries
-    - Add fallback to direct REST API when MCP server is unavailable
-    - Create unified interface that abstracts MCP vs REST API differences
-    - _Requirements: 8.1, 8.2, 8.3, 8.4_
+    - Implement REST API integration for UniProt queries
+    - Add comprehensive error handling and retry logic
+    - Create clean interface for UniProt data access
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
   - [x] 6.2 Write property test for API integration fallback
     - **Property 9: API Integration Fallback**

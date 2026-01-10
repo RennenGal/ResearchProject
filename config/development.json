@@ -28,12 +28,6 @@
     "uniprot_requests_per_second": "${UNIPROT_REQUESTS_PER_SECOND:3.0}",
     "burst_size": 3
   },
-  "mcp": {
-    "enabled": "${MCP_ENABLED:false}",
-    "server_path": "${MCP_SERVER_PATH:./uniprot-mcp-server}",
-    "timeout": 30,
-    "max_retries": 2
-  },
   "collection": {
     "batch_size": "${BATCH_SIZE:50}",
     "page_size": 100,

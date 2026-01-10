@@ -493,7 +493,7 @@ class PerformanceMonitor:
         """
         # Get API reports for known APIs
         api_reports = {}
-        known_apis = ["InterPro", "UniProt_REST", "UniProt_MCP"]
+        known_apis = ["InterPro", "UniProt_REST"]
         
         for api_name in known_apis:
             if any(k.startswith(f"api.{api_name}") for k in self.counters.keys()):

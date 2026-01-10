@@ -17,8 +17,7 @@ The system employs a modular, service-oriented architecture with clear separatio
 graph TB
     subgraph "External APIs"
         InterPro[InterPro API]
-        UniProt[UniProt API]
-        MCP[UniProt MCP Server]
+        UniProt[UniProt REST API]
     end
     
     subgraph "Core Services"
@@ -40,7 +39,6 @@ graph TB
     
     InterPro --> DC
     UniProt --> DC
-    MCP --> DC
     DC --> VA
     DC --> RC
     VA --> DB
@@ -65,7 +63,7 @@ graph TB
 
 **Responsibilities:**
 - Orchestrate the three-phase data collection process
-- Manage API interactions with InterPro, UniProt, and MCP servers
+- Manage API interactions with InterPro and UniProt REST API
 - Handle rate limiting and retry logic
 - Coordinate data validation and storage
 
@@ -89,16 +87,13 @@ class DataCollector:
 - Query parameters for TIM barrel annotation filtering
 
 **UniProt Integration:**
-- Dual approach: MCP server (preferred) + direct REST API (fallback)
-- MCP Server: TakumiY235/uniprot-mcp-server (local setup)
-- Direct API: `https://rest.uniprot.org/uniprotkb/`
+- Direct REST API approach: `https://rest.uniprot.org/uniprotkb/`
 - Key operations: protein lookup, isoform retrieval, sequence/annotation extraction
 
 **Unified API Interface:**
 ```python
 class APIClient:
     def query_interpro(self, endpoint: str, params: dict) -> dict
-    def query_uniprot_mcp(self, tool: str, params: dict) -> dict
     def query_uniprot_rest(self, accession: str, fields: List[str]) -> dict
     def with_retry(self, operation: Callable, max_retries: int) -> Any
 ```
@@ -298,7 +293,7 @@ The testing approach combines unit tests for specific functionality with propert
 
 **Key Test Cases:**
 - InterPro API response parsing
-- UniProt MCP server integration
+- UniProt REST API integration
 - Protein sequence validation
 - TIM barrel coordinate validation
 - Database schema constraints
@@ -316,7 +311,6 @@ Property-based tests will validate universal properties that should hold across 
 
 **End-to-End Scenarios:**
 - Complete data collection workflow from PFAM discovery to isoform storage
-- API failover from MCP server to direct REST API
 - Database integrity during concurrent operations
 - Query engine performance with realistic data volumes
 
@@ -349,7 +343,7 @@ The following properties define the correctness criteria for the Protein Data Co
 **Validates: Requirements 3.2, 3.3, 3.4, 3.5, 3.6**
 
 ### Property 5: Configurable Retry Behavior
-*For any* external API call (InterPro, UniProt, MCP servers) that fails, the system should retry exactly K times (where K is configurable) using exponential backoff, then log the failure and continue processing.
+*For any* external API call (InterPro, UniProt REST API) that fails, the system should retry exactly K times (where K is configurable) using exponential backoff, then log the failure and continue processing.
 **Validates: Requirements 1.4, 3.8, 9.1, 9.2, 9.5**
 
 ### Property 6: Data Validation Consistency
@@ -364,9 +358,9 @@ The following properties define the correctness criteria for the Protein Data Co
 *For any* query by PFAM family identifier, TIM barrel features, or protein identifier, the Query_Engine should return exactly the entities that match the specified criteria and include all required display fields.
 **Validates: Requirements 5.1, 5.2, 5.3, 5.5**
 
-### Property 9: API Integration Fallback
-*For any* UniProt data request, when MCP servers are available and functional, they should be used; when MCP servers are unavailable, the system should seamlessly fall back to direct REST API calls with identical results.
-**Validates: Requirements 8.1, 8.2, 8.4**
+### Property 9: UniProt REST API Reliability
+*For any* UniProt data request, the system should use the REST API with comprehensive error handling and retry logic to ensure reliable data retrieval.
+**Validates: Requirements 8.1, 8.2, 8.3**
 
 ### Property 10: Rate Limiting Compliance
 *For any* sequence of API calls to external databases, the system should respect rate limiting policies by spacing requests appropriately and implementing exponential backoff when rate limits are exceeded.
@@ -426,10 +420,6 @@ class SystemConfig:
     interpro_requests_per_second: float = 10.0
     uniprot_requests_per_second: float = 5.0
     
-    # MCP server configuration
-    mcp_server_enabled: bool = True
-    mcp_server_path: str = "/path/to/uniprot-mcp-server"
-    
     # Collection configuration
     batch_size: int = 100
     cache_ttl_hours: int = 24
@@ -462,7 +452,6 @@ class SystemConfig:
 **Health Checks**:
 - Database connectivity
 - External API availability
-- MCP server status
 - Disk space and memory usage
 
 **Alerting**:

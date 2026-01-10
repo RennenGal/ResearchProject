@@ -1,0 +1,289 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://protein-data-collector/schemas/protein-batch-minimal.json",
+  "title": "Minimal Protein Batch Results Schema",
+  "description": "JSON schema for minimal protein batch collection results, optimized for database insertion into the proteins table",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["batch_info", "processing_status", "proteins"],
+  "properties": {
+    "batch_info": {
+      "type": "object",
+      "description": "Metadata about the batch being processed",
+      "required": ["batch_number", "proteins_in_batch", "protein_ids"],
+      "properties": {
+        "batch_number": {
+          "type": "string",
+          "description": "Unique identifier for this batch (e.g., '001_mini_test', '001_02')",
+          "pattern": "^[0-9]{3}_[a-zA-Z0-9_]+$"
+        },
+        "total_batches": {
+          "type": ["string", "number"],
+          "description": "Total number of batches in the collection or 'test' for test batches"
+        },
+        "proteins_in_batch": {
+          "type": "integer",
+          "description": "Number of proteins in this batch",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when batch was created"
+        },
+        "protein_ids": {
+          "type": "array",
+          "description": "Array of UniProt accession IDs to be processed",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{6,10}$"
+          },
+          "minItems": 1,
+          "maxItems": 10
+        }
+      }
+    },
+    "processing_status": {
+      "type": "object",
+      "description": "Status information about the batch processing",
+      "required": ["total_proteins", "successful_retrievals", "failed_retrievals"],
+      "properties": {
+        "total_proteins": {
+          "type": "integer",
+          "description": "Total number of proteins attempted",
+          "minimum": 0
+        },
+        "successful_retrievals": {
+          "type": "integer",
+          "description": "Number of proteins successfully retrieved",
+          "minimum": 0
+        },
+        "failed_retrievals": {
+          "type": "integer",
+          "description": "Number of proteins that failed to retrieve",
+          "minimum": 0
+        },
+        "processing_timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when processing completed"
+        },
+        "validation_status": {
+          "type": "string",
+          "enum": ["passed", "issues_found", "failed"],
+          "description": "Overall validation status of the batch"
+        },
+        "validation_issues": {
+          "type": ["object", "null"],
+          "description": "Detailed validation issues if any were found",
+          "patternProperties": {
+            "^[A-Z0-9]{6,10}$": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "proteins": {
+      "type": "object",
+      "description": "Collection of protein data keyed by UniProt accession",
+      "patternProperties": {
+        "^[A-Z0-9]{6,10}$": {
+          "type": "object",
+          "description": "Individual protein result",
+          "required": ["accession", "success"],
+          "properties": {
+            "accession": {
+              "type": "string",
+              "description": "UniProt accession ID",
+              "pattern": "^[A-Z0-9]{6,10}$"
+            },
+            "success": {
+              "type": "boolean",
+              "description": "Whether the protein data was successfully retrieved"
+            },
+            "error": {
+              "type": "string",
+              "description": "Error message if success is false"
+            },
+            "data": {
+              "type": "object",
+              "description": "Minimal protein data for database insertion",
+              "required": ["accession", "sequence", "sequence_length", "organism_name", "protein_name"],
+              "properties": {
+                "accession": {
+                  "type": "string",
+                  "description": "UniProt accession ID (primary key)",
+                  "pattern": "^[A-Z0-9]{6,10}$"
+                },
+                "entry_name": {
+                  "type": "string",
+                  "description": "UniProt entry name (e.g., A0A024QZ64_HUMAN)"
+                },
+                "gene_names": {
+                  "type": "string",
+                  "description": "Gene names and synonyms (comma-separated)"
+                },
+                "gene_primary": {
+                  "type": "string",
+                  "description": "Primary gene name"
+                },
+                "organism_name": {
+                  "type": "string",
+                  "description": "Scientific organism name (e.g., Homo sapiens)",
+                  "minLength": 1
+                },
+                "organism_id": {
+                  "type": "integer",
+                  "description": "NCBI Taxonomy ID",
+                  "minimum": 1
+                },
+                "protein_name": {
+                  "type": "string",
+                  "description": "Protein description/name",
+                  "minLength": 1
+                },
+                "sequence": {
+                  "type": "string",
+                  "description": "Amino acid sequence",
+                  "pattern": "^[ACDEFGHIKLMNPQRSTVWY]+$",
+                  "minLength": 1
+                },
+                "sequence_length": {
+                  "type": "integer",
+                  "description": "Length of amino acid sequence",
+                  "minimum": 1
+                },
+                "mass": {
+                  "type": ["number", "null"],
+                  "description": "Molecular weight in Daltons",
+                  "minimum": 0
+                },
+                "catalytic_activity": {
+                  "type": "string",
+                  "description": "Enzymatic reaction description"
+                },
+                "ec_number": {
+                  "type": "string",
+                  "description": "Enzyme Commission number (e.g., 4.1.2.13)",
+                  "pattern": "^([0-9]+\\.){3}[0-9]+$|^$"
+                },
+                "function_cc": {
+                  "type": "string",
+                  "description": "Functional description from comments"
+                },
+                "pathway": {
+                  "type": "string",
+                  "description": "Metabolic pathway information"
+                },
+                "go_biological_process": {
+                  "type": "string",
+                  "description": "Gene Ontology biological process term"
+                },
+                "go_cellular_component": {
+                  "type": "string",
+                  "description": "Gene Ontology cellular component term"
+                },
+                "go_molecular_function": {
+                  "type": "string",
+                  "description": "Gene Ontology molecular function term"
+                },
+                "protein_existence": {
+                  "type": "string",
+                  "description": "Evidence level for protein existence",
+                  "enum": [
+                    "1: Evidence at protein level",
+                    "2: Evidence at transcript level",
+                    "3: Inferred from homology",
+                    "4: Predicted",
+                    "5: Uncertain",
+                    ""
+                  ]
+                },
+                "reviewed": {
+                  "type": "boolean",
+                  "description": "Whether this is a reviewed (Swiss-Prot) or unreviewed (TrEMBL) entry"
+                },
+                "annotation_score": {
+                  "type": ["integer", "null"],
+                  "description": "UniProt annotation quality score",
+                  "minimum": 1,
+                  "maximum": 5
+                },
+                "date_created": {
+                  "type": "string",
+                  "description": "Date when entry was first created (YYYY-MM-DD)",
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$|^$"
+                },
+                "date_modified": {
+                  "type": "string",
+                  "description": "Date when entry was last modified (YYYY-MM-DD)",
+                  "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$|^$"
+                },
+                "entry_version": {
+                  "type": ["integer", "null"],
+                  "description": "UniProt entry version number",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "batch_info": {
+        "batch_number": "001_mini_test",
+        "total_batches": "test",
+        "proteins_in_batch": 2,
+        "timestamp": "2026-01-10T18:39:55.874170",
+        "protein_ids": ["A0A024QZ64", "A0A024R2X3"]
+      },
+      "processing_status": {
+        "total_proteins": 2,
+        "successful_retrievals": 2,
+        "failed_retrievals": 0,
+        "processing_timestamp": "2026-01-10T19:15:00.000000",
+        "validation_status": "passed",
+        "validation_issues": null
+      },
+      "proteins": {
+        "A0A024QZ64": {
+          "accession": "A0A024QZ64",
+          "success": true,
+          "data": {
+            "accession": "A0A024QZ64",
+            "entry_name": "A0A024QZ64_HUMAN",
+            "gene_names": "",
+            "gene_primary": "",
+            "organism_name": "Homo sapiens",
+            "organism_id": 9606,
+            "protein_name": "Fructose-bisphosphate aldolase",
+            "sequence": "MPHSYPALSAEQKKELSDIALRIVAPGKGILAADESVGSMAKRLSQIGVENTEENRRLYRQVLFSADDRVKKCIGGVIFFHETLYQKDDNGVPFVRTIQDKGIVVGIKVDKGVVPLAGTDGETTTQGLDGLSERCAQYKKDGADFAKWRCVLKISERTPSALAILENANVLARYASICQQNGIVPIVEPEILPDGDHDLKRCQYVTEKVLAAVYKALSDHHVYLEGTLLKPNMVTPGHACPIKYTPEEIAMATVTALRRTVPPAVPGVTFLSGGQSEEEASFNLNAINRCPLPRPWALTFSYGRALQASALNAWRGQRDNAGAATEEFIKRAEVNGLAAQGKYEGSGEDGGAAAQSLYIANHAY",
+            "sequence_length": 364,
+            "mass": 39456,
+            "catalytic_activity": "beta-D-fructose 1,6-bisphosphate = D-glyceraldehyde 3-phosphate + dihydroxyacetone phosphate",
+            "ec_number": "4.1.2.13",
+            "function_cc": "",
+            "pathway": "Carbohydrate degradation; glycolysis; D-glyceraldehyde 3-phosphate and glycerone phosphate from D-glucose: step 4/4",
+            "go_biological_process": "glycolytic process",
+            "go_cellular_component": "",
+            "go_molecular_function": "fructose-bisphosphate aldolase activity",
+            "protein_existence": "2: Evidence at transcript level",
+            "reviewed": false,
+            "annotation_score": 2,
+            "date_created": "2014-07-09",
+            "date_modified": "2025-10-08",
+            "entry_version": 68
+          }
+        }
+      }
+    }
+  ]
+}

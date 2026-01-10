@@ -1,7 +1,7 @@
 """
 API integration layer for external database access.
 
-This package contains clients for InterPro, UniProt, and MCP server integration,
+This package contains clients for InterPro and UniProt REST API integration,
 along with retry logic and comprehensive rate limiting functionality.
 """
 
@@ -13,15 +13,13 @@ from .interpro_client import (
 
 from .uniprot_client import (
     UnifiedUniProtClient,
-    get_protein_with_isoforms,
-    get_proteins_batch
+    UniProtRESTClient
 )
 
 __all__ = [
     'InterProAPIClient',
     'UnifiedUniProtClient',
+    'UniProtRESTClient',
     'get_tim_barrel_entries',
-    'get_human_proteins_for_tim_barrel_entries',
-    'get_protein_with_isoforms',
-    'get_proteins_batch'
+    'get_human_proteins_for_tim_barrel_entries'
 ]

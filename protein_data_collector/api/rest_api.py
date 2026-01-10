@@ -120,7 +120,6 @@ class SystemStatus(BaseModel):
     database_connected: bool
     interpro_api_available: bool
     uniprot_api_available: bool
-    mcp_enabled: bool
     configuration: Dict[str, Any]
     data_summary: Dict[str, Any]
 
@@ -294,7 +293,6 @@ async def get_system_status(config: SystemConfig = Depends(get_system_config)):
             "interpro_base_url": config.api.interpro_base_url,
             "uniprot_base_url": config.api.uniprot_base_url,
             "max_retries": config.retry.max_retries,
-            "mcp_enabled": config.mcp.enabled,
             "log_level": config.logging.level
         }
         
@@ -302,7 +300,6 @@ async def get_system_status(config: SystemConfig = Depends(get_system_config)):
             database_connected=db_connected,
             interpro_api_available=interpro_available,
             uniprot_api_available=uniprot_available,
-            mcp_enabled=config.mcp.enabled,
             configuration=config_summary,
             data_summary=data_summary
         )

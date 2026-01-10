@@ -42,7 +42,7 @@ class TestRetryBehavior:
         """
         Property 5: Configurable Retry Behavior
         
-        For any external API call (InterPro, UniProt, MCP servers) that fails,
+        For any external API call (InterPro, UniProt) that fails,
         the system should retry exactly K times (where K is configurable) using
         exponential backoff, then log the failure and continue processing.
         

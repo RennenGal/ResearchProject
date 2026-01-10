@@ -24,7 +24,7 @@ class RetryConfig:
 class DatabaseConfig:
     """Database connection and configuration settings."""
     type: str = "sqlite"  # "mysql" or "sqlite"
-    path: str = "protein_data.db"  # SQLite database file path
+    path: str = "db/protein_data.db"  # SQLite database file path
     host: str = "localhost"
     port: int = 3306
     database: str = "protein_data"
@@ -55,10 +55,7 @@ class RateLimitingConfig:
     uniprot_burst_limit: int = 25
     uniprot_burst_window_seconds: int = 60
     
-    # MCP server rate limiting
-    mcp_requests_per_second: float = 20.0
-    mcp_burst_limit: int = 100
-    mcp_burst_window_seconds: int = 60
+
     
     # Exponential backoff for rate limit violations
     violation_initial_delay: float = 1.0
@@ -81,13 +78,6 @@ class APIConfig:
     request_timeout: int = 30
     connection_timeout: int = 10
 
-
-@dataclass
-class MCPConfig:
-    """MCP server configuration for UniProt integration."""
-    enabled: bool = True
-    server_path: str = "/path/to/uniprot-mcp-server"
-    fallback_to_rest: bool = True
 
 
 @dataclass
@@ -125,7 +115,6 @@ class SystemConfig:
     api: APIConfig = field(default_factory=APIConfig)
     retry: RetryConfig = field(default_factory=RetryConfig)
     rate_limiting: RateLimitingConfig = field(default_factory=RateLimitingConfig)
-    mcp: MCPConfig = field(default_factory=MCPConfig)
     collection: CollectionConfig = field(default_factory=CollectionConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     
@@ -167,12 +156,7 @@ class SystemConfig:
             config.retry.initial_delay = float(os.getenv("INITIAL_DELAY"))
         if os.getenv("BACKOFF_MULTIPLIER"):
             config.retry.backoff_multiplier = float(os.getenv("BACKOFF_MULTIPLIER"))
-            
-        # MCP configuration from environment
-        if os.getenv("MCP_ENABLED"):
-            config.mcp.enabled = os.getenv("MCP_ENABLED").lower() == "true"
-        if os.getenv("MCP_SERVER_PATH"):
-            config.mcp.server_path = os.getenv("MCP_SERVER_PATH")
+
             
         # Logging configuration from environment
         if os.getenv("LOG_LEVEL"):
@@ -214,12 +198,7 @@ class SystemConfig:
             for key, value in retry_config.items():
                 if hasattr(config.retry, key):
                     setattr(config.retry, key, value)
-                    
-        if "mcp" in config_data:
-            mcp_config = config_data["mcp"]
-            for key, value in mcp_config.items():
-                if hasattr(config.mcp, key):
-                    setattr(config.mcp, key, value)
+
                     
         if "collection" in config_data:
             collection_config = config_data["collection"]
@@ -261,9 +240,6 @@ class SystemConfig:
                 "uniprot_requests_per_second": self.rate_limiting.uniprot_requests_per_second,
                 "uniprot_burst_limit": self.rate_limiting.uniprot_burst_limit,
                 "uniprot_burst_window_seconds": self.rate_limiting.uniprot_burst_window_seconds,
-                "mcp_requests_per_second": self.rate_limiting.mcp_requests_per_second,
-                "mcp_burst_limit": self.rate_limiting.mcp_burst_limit,
-                "mcp_burst_window_seconds": self.rate_limiting.mcp_burst_window_seconds,
                 "violation_initial_delay": self.rate_limiting.violation_initial_delay,
                 "violation_backoff_multiplier": self.rate_limiting.violation_backoff_multiplier,
                 "violation_max_delay": self.rate_limiting.violation_max_delay,
@@ -276,11 +252,7 @@ class SystemConfig:
                 "initial_delay": self.retry.initial_delay,
                 "backoff_multiplier": self.retry.backoff_multiplier,
                 "max_delay": self.retry.max_delay
-            },
-            "mcp": {
-                "enabled": self.mcp.enabled,
-                "server_path": self.mcp.server_path,
-                "fallback_to_rest": self.mcp.fallback_to_rest
+
             },
             "collection": {
                 "batch_size": self.collection.batch_size,

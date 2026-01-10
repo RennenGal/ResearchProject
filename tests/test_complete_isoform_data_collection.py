@@ -14,7 +14,7 @@ from typing import Dict, Any, List
 from protein_data_collector.collector.uniprot_collector import UniProtIsoformCollector, collect_all_isoforms
 from protein_data_collector.models.entities import InterProProteinModel, ProteinModel
 from protein_data_collector.api.uniprot_client import UnifiedUniProtClient
-from protein_data_collector.config import APIConfig, MCPConfig, RetryConfig
+from protein_data_collector.config import APIConfig, RetryConfig
 from protein_data_collector.retry import RetryController
 
 
@@ -95,14 +95,6 @@ class TestCompleteIsoformDataCollection:
             connection_timeout=10
         )
     
-    def _create_mcp_config(self):
-        """Create MCP configuration for testing."""
-        return MCPConfig(
-            enabled=True,
-            server_path="/mock/mcp/server",
-            fallback_to_rest=True
-        )
-    
     def _create_retry_controller(self):
         """Create retry controller for testing."""
         retry_config = RetryConfig(
@@ -134,7 +126,6 @@ class TestCompleteIsoformDataCollection:
         assume(all(isoform["exon_annotations"] for isoform in isoforms_data))
         
         api_config = self._create_api_config()
-        mcp_config = self._create_mcp_config()
         retry_controller = self._create_retry_controller()
         
         with patch('protein_data_collector.api.uniprot_client.UnifiedUniProtClient') as mock_client_class:
@@ -148,14 +139,15 @@ class TestCompleteIsoformDataCollection:
                 return ProteinModel(
                     isoform_id=isoform_data["isoform_id"],
                     parent_protein_id=parent_id,
+                    parent_tim_barrel_accession="PF00001",  # Default test value
                     sequence=isoform_data["sequence"],
                     sequence_length=isoform_data["length"],
                     exon_annotations=isoform_data["exon_annotations"],
                     exon_count=isoform_data["exon_count"],
                     tim_barrel_location=isoform_data["tim_barrel_location"],
-                    organism=isoform_data["organism"],
-                    name=isoform_data["name"],
-                    description=isoform_data["description"]
+                    organism_name=isoform_data["organism"],  # Use organism_name instead of organism
+                    protein_name=isoform_data["name"],  # Use protein_name instead of name
+                    # Note: No description field in ProteinModel
                 )
             
             # Set the mock method directly instead of using side_effect
@@ -189,14 +181,13 @@ class TestCompleteIsoformDataCollection:
                     assert isinstance(protein.tim_barrel_location, dict)
                     
                     # Requirement 3.5: Protein name and description
-                    assert protein.name is not None
-                    assert len(protein.name) > 0
-                    assert protein.description is not None
-                    assert len(protein.description) > 0
+                    assert protein.protein_name is not None
+                    assert len(protein.protein_name) > 0
+                    # Note: ProteinModel doesn't have a description field, it uses various comment fields
                     
                     # Requirement 3.6: Organism information
-                    assert protein.organism is not None
-                    assert protein.organism == "Homo sapiens"
+                    assert protein.organism_name is not None
+                    assert protein.organism_name == "Homo sapiens"
                     
                     # Verify parent relationship
                     assert protein.parent_protein_id == interpro_protein.uniprot_id
@@ -253,14 +244,14 @@ class TestCompleteIsoformDataCollection:
                 return ProteinModel(
                     isoform_id=isoform_data["isoform_id"],
                     parent_protein_id=parent_id,
+            parent_tim_barrel_accession="PF00001",  # Default test value
                     sequence=isoform_data["sequence"],
                     sequence_length=isoform_data["length"],
                     exon_annotations=isoform_data["exon_annotations"],
                     exon_count=isoform_data["exon_count"],
                     tim_barrel_location=isoform_data["tim_barrel_location"],
-                    organism=isoform_data["organism"],
-                    name=isoform_data["name"],
-                    description=isoform_data["description"]
+                    organism_name=isoform_data["organism"],
+                    protein_name=isoform_data["name"],
                 )
             
             # Set the mock method directly
@@ -295,9 +286,9 @@ class TestCompleteIsoformDataCollection:
                         assert protein.sequence is not None and len(protein.sequence) > 0
                         assert protein.exon_annotations is not None
                         assert protein.tim_barrel_location is not None
-                        assert protein.name is not None and len(protein.name) > 0
-                        assert protein.description is not None and len(protein.description) > 0
-                        assert protein.organism == "Homo sapiens"
+                        assert protein.protein_name is not None and len(protein.protein_name) > 0
+                        # Note: ProteinModel doesn't have description field
+                        assert protein.organism_name == "Homo sapiens"
     
     @given(
         interpro_protein=interpro_protein_strategy(),
@@ -329,14 +320,14 @@ class TestCompleteIsoformDataCollection:
                 return ProteinModel(
                     isoform_id=isoform_data["isoform_id"],
                     parent_protein_id=parent_id,
+            parent_tim_barrel_accession="PF00001",  # Default test value
                     sequence=isoform_data["sequence"],
                     sequence_length=isoform_data["length"],
                     exon_annotations=isoform_data["exon_annotations"],
                     exon_count=None,  # Let the collector calculate this
                     tim_barrel_location=isoform_data["tim_barrel_location"],
-                    organism=isoform_data["organism"],
-                    name=isoform_data["name"],
-                    description=isoform_data["description"]
+                    organism_name=isoform_data["organism"],
+                    protein_name=isoform_data["name"],
                 )
             
             # Set the mock method directly
@@ -407,14 +398,14 @@ class TestCompleteIsoformDataCollection:
                 return ProteinModel(
                     isoform_id=isoform_data["isoform_id"],
                     parent_protein_id=parent_id,
+            parent_tim_barrel_accession="PF00001",  # Default test value
                     sequence=isoform_data["sequence"],
                     sequence_length=isoform_data["length"],
                     exon_annotations=isoform_data["exon_annotations"],
                     exon_count=isoform_data["exon_count"],
                     tim_barrel_location=isoform_data["tim_barrel_location"],
-                    organism=isoform_data["organism"],
-                    name=isoform_data["name"],
-                    description=isoform_data["description"]
+                    organism_name=isoform_data["organism"],
+                    protein_name=isoform_data["name"],
                 )
             
             # Set the mock method directly
@@ -496,14 +487,14 @@ class TestCompleteIsoformDataCollection:
                 return ProteinModel(
                     isoform_id=isoform_data["isoform_id"],
                     parent_protein_id=parent_id,
+            parent_tim_barrel_accession="PF00001",  # Default test value
                     sequence=isoform_data["sequence"],
                     sequence_length=isoform_data["length"],
                     exon_annotations=isoform_data["exon_annotations"],
                     exon_count=isoform_data["exon_count"],
                     tim_barrel_location=isoform_data["tim_barrel_location"],
-                    organism=isoform_data["organism"],
-                    name=isoform_data["name"],
-                    description=isoform_data["description"]
+                    organism_name=isoform_data["organism"],
+                    protein_name=isoform_data["name"],
                 )
             
             # Set the mock method directly

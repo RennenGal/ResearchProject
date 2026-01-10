@@ -66,12 +66,13 @@ class ProteinSequenceValidator:
     # Extended amino acids including ambiguous codes
     EXTENDED_AMINO_ACIDS = set("ACDEFGHIKLMNPQRSTVWYXBZJUO*")
     
-    def __init__(self, allow_extended: bool = False):
+    def __init__(self, allow_extended: bool = True):
         """
         Initialize validator.
         
         Args:
             allow_extended: Whether to allow extended amino acid codes (X, B, Z, etc.)
+                           Default is True to handle real-world UniProt sequences
         """
         self.allow_extended = allow_extended
         self.valid_chars = self.EXTENDED_AMINO_ACIDS if allow_extended else self.VALID_AMINO_ACIDS
@@ -119,6 +120,7 @@ class ProteinSequenceValidator:
                 value=sequence,
                 context={"invalid_characters": list(invalid_chars)}
             ))
+            return result  # Return early if invalid characters found
         
         # Check sequence length
         if len(clean_sequence) < 10:
@@ -170,22 +172,40 @@ class TIMBarrelLocationValidator:
             ))
             return result
         
+        # Handle empty dictionaries gracefully - they're valid but contain no location data
+        if not location:
+            result.add_warning("TIM barrel location is empty - no coordinate data available")
+            return result
+        
         # Check for required fields
         required_fields = ['start', 'end']
-        for field in required_fields:
-            if field not in location:
-                result.add_error(ValidationError(
-                    error_type=ValidationErrorType.MISSING_REQUIRED_FIELD,
-                    field_name=f"tim_barrel_location.{field}",
-                    message=f"Missing required field: {field}",
-                    value=location
-                ))
+        missing_fields = [field for field in required_fields if field not in location]
+        
+        if missing_fields:
+            # If some but not all required fields are missing, it's an error
+            if len(missing_fields) < len(required_fields):
+                for field in missing_fields:
+                    result.add_error(ValidationError(
+                        error_type=ValidationErrorType.MISSING_REQUIRED_FIELD,
+                        field_name=f"tim_barrel_location.{field}",
+                        message=f"Missing required field: {field}",
+                        value=location
+                    ))
+            else:
+                # If all required fields are missing, treat as empty location (warning only)
+                result.add_warning("TIM barrel location contains no coordinate data")
+                return result
         
         if result.errors:
             return result
         
         start = location.get('start')
         end = location.get('end')
+        
+        # Handle None values gracefully
+        if start is None or end is None:
+            result.add_warning("TIM barrel location contains null coordinate values")
+            return result
         
         # Validate coordinate types
         if not isinstance(start, int) or not isinstance(end, int):
@@ -235,7 +255,7 @@ class TIMBarrelLocationValidator:
                 ))
         
         # Check for reasonable TIM barrel length
-        if result.is_valid:
+        if result.is_valid and start > 0 and end > 0:
             barrel_length = end - start + 1
             if barrel_length < 200:
                 result.add_warning(f"TIM barrel region is unusually short ({barrel_length} residues)")
@@ -250,7 +270,7 @@ class DataValidator:
     
     def __init__(self):
         """Initialize validator with sub-validators."""
-        self.sequence_validator = ProteinSequenceValidator()
+        self.sequence_validator = ProteinSequenceValidator(allow_extended=True)
         self.location_validator = TIMBarrelLocationValidator()
     
     def validate_pfam_family(self, data: Dict[str, Any]) -> ValidationResult:

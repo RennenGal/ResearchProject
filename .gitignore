@@ -140,14 +140,7 @@ temp/
 docs/temp/
 scripts/temp/
 
-# Database files
-*.db
-*.sqlite
-*.db-wal
-*.db-shm
-
-# Database directory
-db/
+# Database files - removed to track db files in git
 
 # IDE
 .vscode/

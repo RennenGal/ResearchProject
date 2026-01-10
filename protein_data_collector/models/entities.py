@@ -239,8 +239,9 @@ class InterProProteinModel(BaseModel):
 
 
 class ProteinModel(BaseModel):
-    """Pydantic model for protein isoform entities with detailed annotations."""
+    """Comprehensive Pydantic model for protein entities with all 67 UniProt fields."""
     
+    # Primary identifiers
     isoform_id: str = Field(
         ..., 
         min_length=6, 
@@ -253,16 +254,116 @@ class ProteinModel(BaseModel):
         max_length=20,
         description="Parent protein UniProt ID"
     )
-    sequence: str = Field(
-        ..., 
-        min_length=10,
-        description="Protein amino acid sequence"
+    parent_tim_barrel_accession: str = Field(
+        ...,
+        description="Associated TIM barrel entry accession"
     )
-    sequence_length: int = Field(
-        ..., 
-        gt=0,
-        description="Length of protein sequence"
+    
+    # Category field for filtering
+    data_category: str = Field(
+        default="sequences",
+        description="Data category for filtering"
     )
+    
+    # 1. Names & Taxonomy (14 fields)
+    accession: Optional[str] = Field(None, description="UniProt accession")
+    entry_name: Optional[str] = Field(None, description="UniProt entry name")
+    gene_names: Optional[str] = Field(None, description="Gene names")
+    gene_primary: Optional[str] = Field(None, description="Primary gene name")
+    gene_synonym: Optional[str] = Field(None, description="Gene synonyms")
+    gene_oln: Optional[str] = Field(None, description="Gene OLN")
+    gene_orf: Optional[str] = Field(None, description="Gene ORF")
+    organism_name: Optional[str] = Field(None, description="Organism name")
+    organism_id: Optional[int] = Field(None, description="Organism taxonomy ID")
+    protein_name: Optional[str] = Field(None, description="Protein name")
+    proteomes: Optional[str] = Field(None, description="Proteomes")
+    lineage: Optional[str] = Field(None, description="Taxonomic lineage")
+    lineage_ids: Optional[str] = Field(None, description="Taxonomic lineage IDs")
+    virus_hosts: Optional[str] = Field(None, description="Virus hosts")
+    
+    # 2. Sequences (19 fields)
+    alternative_products: Optional[str] = Field(None, description="Alternative products")
+    alternative_sequence: Optional[str] = Field(None, description="Alternative sequence")
+    error_gmodel_pred: Optional[bool] = Field(None, description="Gene model prediction error")
+    fragment: Optional[bool] = Field(None, description="Fragment")
+    organelle: Optional[str] = Field(None, description="Organelle")
+    sequence: str = Field(..., min_length=10, description="Protein amino acid sequence")
+    sequence_length: int = Field(..., gt=0, description="Length of protein sequence")
+    mass: Optional[float] = Field(None, description="Molecular mass")
+    mass_spectrometry: Optional[str] = Field(None, description="Mass spectrometry")
+    natural_variant: Optional[str] = Field(None, description="Natural variants")
+    non_adjacent_residues: Optional[str] = Field(None, description="Non-adjacent residues")
+    non_standard_residue: Optional[str] = Field(None, description="Non-standard residues")
+    non_terminal_residue: Optional[str] = Field(None, description="Non-terminal residues")
+    polymorphism: Optional[str] = Field(None, description="Polymorphism")
+    rna_editing: Optional[str] = Field(None, description="RNA editing")
+    sequence_caution: Optional[str] = Field(None, description="Sequence caution")
+    sequence_conflict: Optional[str] = Field(None, description="Sequence conflict")
+    sequence_uncertainty: Optional[str] = Field(None, description="Sequence uncertainty")
+    sequence_version: Optional[int] = Field(None, description="Sequence version")
+    
+    # 3. Function (16 fields)
+    absorption: Optional[str] = Field(None, description="Absorption")
+    active_site: Optional[str] = Field(None, description="Active site")
+    activity_regulation: Optional[str] = Field(None, description="Activity regulation")
+    binding_site: Optional[str] = Field(None, description="Binding site")
+    catalytic_activity: Optional[str] = Field(None, description="Catalytic activity")
+    cofactor: Optional[str] = Field(None, description="Cofactor")
+    dna_binding: Optional[str] = Field(None, description="DNA binding")
+    ec_number: Optional[str] = Field(None, description="EC number")
+    function_cc: Optional[str] = Field(None, description="Function")
+    kinetics: Optional[str] = Field(None, description="Kinetics")
+    pathway: Optional[str] = Field(None, description="Pathway")
+    ph_dependence: Optional[str] = Field(None, description="pH dependence")
+    redox_potential: Optional[str] = Field(None, description="Redox potential")
+    rhea_id: Optional[str] = Field(None, description="Rhea ID")
+    site: Optional[str] = Field(None, description="Site")
+    temp_dependence: Optional[str] = Field(None, description="Temperature dependence")
+    
+    # 4. Interaction (2 fields)
+    interacts_with: Optional[str] = Field(None, description="Interacts with")
+    subunit_structure: Optional[str] = Field(None, description="Subunit structure")
+    
+    # 5. Gene Ontology (5 fields)
+    go_biological_process: Optional[str] = Field(None, description="GO biological process")
+    go_cellular_component: Optional[str] = Field(None, description="GO cellular component")
+    go_molecular_function: Optional[str] = Field(None, description="GO molecular function")
+    go_terms: Optional[str] = Field(None, description="GO terms")
+    go_ids: Optional[str] = Field(None, description="GO IDs")
+    
+    # 6. Structure (4 fields)
+    structure_3d: Optional[str] = Field(None, description="3D structure")
+    beta_strand: Optional[str] = Field(None, description="Beta strand")
+    helix: Optional[str] = Field(None, description="Helix")
+    turn: Optional[str] = Field(None, description="Turn")
+    
+    # 7. Date Information (4 fields)
+    date_created: Optional[datetime] = Field(None, description="Date created")
+    date_modified: Optional[datetime] = Field(None, description="Date modified")
+    date_sequence_modified: Optional[datetime] = Field(None, description="Date sequence modified")
+    entry_version: Optional[int] = Field(None, description="Entry version")
+    
+    # 8. Family & Domains (9 fields)
+    coiled_coil: Optional[str] = Field(None, description="Coiled coil")
+    compositional_bias: Optional[str] = Field(None, description="Compositional bias")
+    domain_cc: Optional[str] = Field(None, description="Domain")
+    domain_ft: Optional[str] = Field(None, description="Domain feature")
+    motif: Optional[str] = Field(None, description="Motif")
+    protein_families: Optional[str] = Field(None, description="Protein families")
+    region: Optional[str] = Field(None, description="Region")
+    repeat_region: Optional[str] = Field(None, description="Repeat region")
+    zinc_finger: Optional[str] = Field(None, description="Zinc finger")
+    
+    # 9. 3D Structure Databases (7 fields)
+    xref_alphafolddb: Optional[str] = Field(None, description="AlphaFoldDB cross-reference")
+    xref_bmrb: Optional[str] = Field(None, description="BMRB cross-reference")
+    xref_pcddb: Optional[str] = Field(None, description="PCDDB cross-reference")
+    xref_pdb: Optional[str] = Field(None, description="PDB cross-reference")
+    xref_pdbsum: Optional[str] = Field(None, description="PDBsum cross-reference")
+    xref_sasbdb: Optional[str] = Field(None, description="SASBDB cross-reference")
+    xref_smr: Optional[str] = Field(None, description="SMR cross-reference")
+    
+    # Custom fields for TIM barrel research
     exon_annotations: Dict[str, Any] = Field(
         default_factory=dict,
         description="Exon annotation data as dictionary"
@@ -276,48 +377,27 @@ class ProteinModel(BaseModel):
         None,
         description="TIM barrel location coordinates as dictionary"
     )
-    organism: Optional[str] = Field(
-        None, 
-        max_length=100,
-        description="Source organism"
-    )
-    name: Optional[str] = Field(
-        None, 
-        max_length=255,
-        description="Protein name"
-    )
-    description: Optional[str] = Field(
-        None,
-        description="Protein description"
-    )
+    
+    # Quality indicators
+    protein_existence: Optional[str] = Field(None, description="Protein existence")
+    reviewed: Optional[bool] = Field(None, description="Reviewed status")
+    annotation_score: Optional[int] = Field(None, description="Annotation score")
+    
+    # Metadata
     created_at: Optional[datetime] = Field(
         default_factory=datetime.now,
         description="Record creation timestamp"
     )
-    
-    @field_validator('isoform_id')
-    @classmethod
-    def validate_isoform_id(cls, v):
-        """Validate isoform ID format."""
-        if not v.strip():
-            raise ValueError("Isoform ID cannot be empty or whitespace")
-        return v.strip()
-    
-    @field_validator('parent_protein_id')
-    @classmethod
-    def validate_parent_protein_id(cls, v):
-        """Validate parent protein ID format."""
-        if not v.strip():
-            raise ValueError("Parent protein ID cannot be empty or whitespace")
-        if not v.isalnum():
-            raise ValueError("Parent protein ID must be alphanumeric")
-        return v.strip().upper()
+    updated_at: Optional[datetime] = Field(
+        default_factory=datetime.now,
+        description="Record update timestamp"
+    )
     
     @field_validator('sequence')
     @classmethod
     def validate_sequence(cls, v):
         """Validate protein sequence contains only valid amino acids."""
-        validator = ProteinSequenceValidator()
+        validator = ProteinSequenceValidator(allow_extended=True)
         result = validator.validate(v)
         if not result.is_valid:
             raise ValueError(f"Invalid protein sequence: {result.error_message}")
@@ -337,7 +417,7 @@ class ProteinModel(BaseModel):
     @classmethod
     def validate_tim_barrel_location(cls, v, info):
         """Validate TIM barrel location coordinates."""
-        if v is not None and 'sequence_length' in info.data:
+        if v is not None and v and 'sequence_length' in info.data:  # Only validate non-empty locations
             validator = TIMBarrelLocationValidator()
             result = validator.validate(v, info.data['sequence_length'])
             if not result.is_valid:
@@ -356,14 +436,6 @@ class ProteinModel(BaseModel):
                     raise ValueError(f"Exon count {v} does not match annotations count {actual_count}")
         return v
     
-    @field_validator('name', 'description', 'organism')
-    @classmethod
-    def validate_text_fields(cls, v):
-        """Validate text fields are not empty or whitespace-only."""
-        if v is not None and not v.strip():
-            raise ValueError("Text fields cannot be empty or whitespace-only")
-        return v.strip() if v else v
-    
     @model_validator(mode='after')
     def validate_consistency(self):
         """Validate overall data consistency."""
@@ -381,60 +453,47 @@ class ProteinModel(BaseModel):
     
     def to_json_dict(self) -> Dict[str, Any]:
         """Convert to dictionary suitable for JSON storage."""
-        data = self.dict()
+        data = self.model_dump()
         # Convert datetime to ISO string
-        if data.get('created_at'):
-            data['created_at'] = data['created_at'].isoformat()
+        for field in ['created_at', 'updated_at', 'date_created', 'date_modified', 'date_sequence_modified']:
+            if data.get(field):
+                data[field] = data[field].isoformat()
         return data
     
     @classmethod
     def from_json_dict(cls, data: Dict[str, Any]) -> 'ProteinModel':
         """Create instance from JSON dictionary."""
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        # Convert ISO strings back to datetime
+        for field in ['created_at', 'updated_at', 'date_created', 'date_modified', 'date_sequence_modified']:
+            if field in data and isinstance(data[field], str):
+                try:
+                    data[field] = datetime.fromisoformat(data[field])
+                except ValueError:
+                    data[field] = None
         return cls(**data)
-    
-    @model_serializer
-    def serialize_model(self):
-        """Custom serializer to handle datetime objects."""
-        data = {
-            'isoform_id': self.isoform_id,
-            'parent_protein_id': self.parent_protein_id,
-            'sequence': self.sequence,
-            'sequence_length': self.sequence_length,
-            'exon_annotations': self.exon_annotations,
-            'exon_count': self.exon_count,
-            'tim_barrel_location': self.tim_barrel_location,
-            'organism': self.organism,
-            'name': self.name,
-            'description': self.description,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-        return data
     
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "isoform_id": "P60174-1",
                 "parent_protein_id": "P60174",
-                "sequence": "MSKIAKIGEHTPSALAIMENANVLARYASICQQNGIVPIVEPEILPDGDHDLKRCQYVTEKVLAAVYKALSDHHIYLEGTLLKPNMVTPGHACTQKFSHEEIAMATVTALRRTVPPAVTGITFLSGGQSEEEASINLNAINKCPLLKPWALTFSYGRALQASALKAWGGKKENLKAAQEEYVKRALANSLACQGKYTPSGQAGAAASESLFVSNHAY",
+                "parent_tim_barrel_accession": "IPR000652",
+                "data_category": "sequences",
+                "accession": "P60174",
+                "entry_name": "TPIS_HUMAN",
+                "protein_name": "Triosephosphate isomerase",
+                "gene_primary": "TPI1",
+                "organism_name": "Homo sapiens",
+                "sequence": "MAPSRKFFVGGNWKMNGRKQSLGELIGTLNAAKVPADTEVVCAPPTAYIDFARQKLDPKIAVAAQNCYKVTNGAFTGEISPGMIKDCGATWVVLGHSERRHVFGESDELIGQKVAHALAEGLGVIACIGEKLDEREAGITEKVVFEQTKAIADNVKDWSKVVLAYEPVWAIGTGKTATPQQAQEVHEKLRGWLKSNVSDAVAQSTRIIYGGSVTGATCKELASQPDVDGFLVGGASLKPEFVDIINAKQ",
                 "sequence_length": 249,
-                "exon_annotations": {
-                    "exons": [
-                        {"start": 1, "end": 50},
-                        {"start": 51, "end": 150},
-                        {"start": 151, "end": 249}
-                    ]
-                },
-                "exon_count": 3,
-                "tim_barrel_location": {
-                    "start": 10,
-                    "end": 240,
-                    "confidence": 0.95
-                },
-                "organism": "Homo sapiens",
-                "name": "Triosephosphate isomerase",
-                "description": "Catalyzes the interconversion of dihydroxyacetone phosphate and D-glyceraldehyde 3-phosphate"
+                "mass": 26669.0,
+                "ec_number": "5.3.1.1",
+                "function_cc": "Catalyzes the interconversion of dihydroxyacetone phosphate and D-glyceraldehyde 3-phosphate",
+                "xref_pdb": "1HTI;1N55;1TPH;1TRI;2JK2;2VEI;4POC;5TRI;6TIM;7TIM",
+                "xref_alphafolddb": "P60174",
+                "protein_existence": "1: Evidence at protein level",
+                "reviewed": True,
+                "annotation_score": 5
             }
         }
     )

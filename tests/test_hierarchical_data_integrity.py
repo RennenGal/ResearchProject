@@ -119,6 +119,7 @@ def protein_isoform_generator(draw, parent_proteins: List[InterProProteinModel])
     return ProteinModel(
         isoform_id=isoform_id,
         parent_protein_id=parent_protein.uniprot_id,
+        parent_tim_barrel_accession=parent_protein.tim_barrel_accession,
         sequence=sequence,
         sequence_length=sequence_length,
         exon_annotations=exon_annotations,
@@ -321,10 +322,10 @@ class TestHierarchicalDataIntegrity:
             parent_proteins = [p for p in interpro_proteins if p.uniprot_id == isoform.parent_protein_id]
             if parent_proteins:
                 parent_protein = parent_proteins[0]
-                if isoform.organism and parent_protein.organism:
+                if isoform.organism_name and parent_protein.organism:
                     # Both should be human organisms (allowing for slight variations)
-                    assert isoform.organism.lower() in ["homo sapiens", "human"], \
-                        f"Isoform {isoform.isoform_id} has non-human organism: {isoform.organism}"
+                    assert isoform.organism_name.lower() in ["homo sapiens", "human"], \
+                        f"Isoform {isoform.isoform_id} has non-human organism: {isoform.organism_name}"
                     assert parent_protein.organism.lower() in ["homo sapiens", "human"], \
                         f"Protein {parent_protein.uniprot_id} has non-human organism: {parent_protein.organism}"
         
@@ -384,6 +385,7 @@ class TestHierarchicalDataIntegrity:
         protein_isoform = ProteinModel(
             isoform_id="P12345-1",
             parent_protein_id="P12345",
+            parent_tim_barrel_accession="PF00001",
             sequence="ACDEFGHIKLMNPQRSTVWY" * 10,  # Valid amino acid sequence
             sequence_length=200,
             exon_annotations={"exons": [{"start": 1, "end": 200}]},

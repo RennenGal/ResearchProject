@@ -54,14 +54,15 @@ def sample_protein_isoform():
     return ProteinModel(
         isoform_id="P60174-1",
         parent_protein_id="P60174",
+        parent_tim_barrel_accession="PF00121",  # Add required field
         sequence=sequence,
         sequence_length=len(sequence),
         exon_annotations={"exons": [{"start": 1, "end": len(sequence)}]},
         exon_count=1,
         tim_barrel_location={"start": 10, "end": 240, "confidence": 0.95},
-        organism="Homo sapiens",
-        name="Triosephosphate isomerase",
-        description="Catalyzes the interconversion of dihydroxyacetone phosphate and D-glyceraldehyde 3-phosphate"
+        organism_name="Homo sapiens",  # Use organism_name instead of organism
+        protein_name="Triosephosphate isomerase",  # Use protein_name instead of name
+        # Note: No description field in ProteinModel
     )
 
 

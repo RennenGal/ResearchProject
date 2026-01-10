@@ -235,19 +235,8 @@ class HealthChecker:
                         "results_available": len(data.get("results", [])) > 0
                     }
                     
-                    # Check MCP server if enabled
-                    if self.config.mcp.enabled:
-                        try:
-                            client = UnifiedUniProtClient()
-                            # This would test MCP connectivity
-                            details["mcp_enabled"] = True
-                            details["mcp_status"] = "available"  # Simplified check
-                        except Exception as mcp_error:
-                            details["mcp_enabled"] = True
-                            details["mcp_status"] = "unavailable"
-                            details["mcp_error"] = str(mcp_error)
-                    else:
-                        details["mcp_enabled"] = False
+                    # Using REST API only
+                    details["rest_only"] = True
                     
                     # Determine status based on response time
                     if response_time > 5000:  # > 5 seconds

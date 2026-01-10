@@ -13,8 +13,7 @@ A bioinformatics application that collects protein data from InterPro and UniPro
 - **Protein_Isoform**: Alternative protein sequences produced from the same gene through alternative splicing or other mechanisms
 - **Data_Collector**: The system component responsible for retrieving and processing protein data
 - **Local_Database**: The system's internal storage for collected protein data
-- **MCP_Server**: Model Context Protocol server that provides standardized access to external databases
-- **UniProt_MCP**: Existing MCP servers (e.g., Augmented Nature UniProt MCP Server) that provide comprehensive UniProt database access
+- **UniProt_REST**: UniProt REST API that provides comprehensive UniProt database access
 - **Query_Engine**: The system component that processes user queries against the collected data
 
 ## Requirements
@@ -108,17 +107,17 @@ A bioinformatics application that collects protein data from InterPro and UniPro
 3. WHEN data validation fails, THE Data_Collector SHALL log validation errors and exclude invalid records
 4. THE Local_Database SHALL enforce data integrity constraints on all stored records
 5. THE Query_Engine SHALL provide data quality metrics and validation status in query results
-### Requirement 8: MCP Server Integration
+### Requirement 8: UniProt REST API Integration
 
-**User Story:** As a system architect, I want to leverage existing MCP servers where available, so that I can reduce development effort and use proven, maintained integrations.
+**User Story:** As a system architect, I want to use UniProt REST API for reliable protein data access, so that I can ensure consistent and maintainable data retrieval.
 
 #### Acceptance Criteria
 
-1. THE Data_Collector SHALL utilize existing UniProt MCP servers (such as Augmented Nature UniProt MCP Server) for UniProt data retrieval
-2. THE Data_Collector SHALL implement direct InterPro API integration where no suitable MCP server exists
-3. THE Data_Collector SHALL provide a unified interface that abstracts the differences between MCP server calls and direct API calls
-4. WHEN MCP servers are unavailable, THE Data_Collector SHALL fall back to direct API integration
-5. THE Data_Collector SHALL validate that MCP server responses contain the required data fields before processing
+1. THE Data_Collector SHALL utilize UniProt REST API for all UniProt data retrieval
+2. THE Data_Collector SHALL implement comprehensive error handling for REST API calls
+3. THE Data_Collector SHALL provide rate limiting to respect API usage guidelines
+4. THE Data_Collector SHALL validate that REST API responses contain the required data fields before processing
+5. THE Data_Collector SHALL log API response times and success rates for monitoring
 
 ### Requirement 9: External Database Access Configuration
 
@@ -126,7 +125,7 @@ A bioinformatics application that collects protein data from InterPro and UniPro
 
 #### Acceptance Criteria
 
-1. THE Data_Collector SHALL use a configurable retry count K for all external database API calls (InterPro, UniProt, MCP servers)
+1. THE Data_Collector SHALL use a configurable retry count K for all external database API calls (InterPro, UniProt REST API)
 2. THE Data_Collector SHALL implement exponential backoff between retry attempts for all external database access
 3. THE Data_Collector SHALL allow configuration of retry delay parameters (initial delay, backoff multiplier, maximum delay)
 4. THE Data_Collector SHALL log retry attempts with details about which database, operation, and attempt number

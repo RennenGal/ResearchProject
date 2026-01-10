@@ -2,7 +2,7 @@
 Retry controller and mechanisms for handling external API failures.
 
 This module provides configurable retry logic with exponential backoff
-for all external database API calls (InterPro, UniProt, MCP servers).
+for all external database API calls (InterPro, UniProt).
 """
 
 import asyncio

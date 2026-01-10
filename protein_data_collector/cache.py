@@ -38,7 +38,6 @@ class CacheConfig:
     # API-specific TTL settings
     interpro_ttl_seconds: int = 7200  # 2 hours for InterPro
     uniprot_ttl_seconds: int = 3600   # 1 hour for UniProt
-    mcp_ttl_seconds: int = 1800       # 30 minutes for MCP
     
     # Performance settings
     cleanup_interval_seconds: int = 300  # 5 minutes
@@ -222,7 +221,6 @@ class ResponseCache:
             "InterPro": self.config.interpro_ttl_seconds,
             "UniProt": self.config.uniprot_ttl_seconds,
             "UniProt_REST": self.config.uniprot_ttl_seconds,
-            "UniProt_MCP": self.config.mcp_ttl_seconds,
         }
         
         return api_ttl_map.get(api_name, self.config.default_ttl_seconds)
@@ -559,6 +557,80 @@ class CachedAPIClient:
         self.cache = cache
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
+    async def get_or_fetch(
+        self,
+        cache_key: str,
+        fetch_func: Callable,
+        ttl_hours: int = 24
+    ) -> Any:
+        """
+        Get data from cache or fetch if not available.
+        
+        Args:
+            cache_key: Cache key for the data
+            fetch_func: Async function to call if cache miss
+            ttl_hours: Time to live in hours
+            
+        Returns:
+            Data from cache or fresh fetch
+        """
+        # Parse cache key to extract API info
+        parts = cache_key.split(":", 2)
+        if len(parts) >= 2:
+            api_name = parts[0]
+            endpoint = parts[1]
+            params = {"cache_key": cache_key}
+        else:
+            api_name = "generic"
+            endpoint = cache_key
+            params = {}
+        
+        # Try cache first
+        cached_response = self.cache.get(api_name, endpoint, params)
+        if cached_response is not None:
+            return cached_response
+        
+        # Cache miss - make actual request
+        start_time = time.time()
+        
+        try:
+            response = await fetch_func()
+            
+            # Record response time
+            response_time_ms = (time.time() - start_time) * 1000
+            self.cache.record_response_time(response_time_ms)
+            
+            # Cache the response
+            ttl_seconds = ttl_hours * 3600
+            self.cache.put(api_name, endpoint, params, response, ttl_seconds)
+            
+            self.logger.debug(
+                f"Fresh fetch for cache key {cache_key}",
+                extra={
+                    "cache_key": cache_key,
+                    "response_time_ms": response_time_ms,
+                    "cached": True
+                }
+            )
+            
+            return response
+            
+        except Exception as e:
+            # Record failed response time
+            response_time_ms = (time.time() - start_time) * 1000
+            self.cache.record_response_time(response_time_ms)
+            
+            self.logger.warning(
+                f"Fetch failed for cache key {cache_key}: {e}",
+                extra={
+                    "cache_key": cache_key,
+                    "response_time_ms": response_time_ms,
+                    "error": str(e)
+                }
+            )
+            
+            raise
+    
     async def cached_request(
         self,
         api_name: str,
@@ -645,7 +717,6 @@ def get_global_cache() -> ResponseCache:
             default_ttl_seconds=config.collection.cache_ttl_hours * 3600,
             interpro_ttl_seconds=config.collection.cache_ttl_hours * 3600 * 2,  # 2x default for InterPro
             uniprot_ttl_seconds=config.collection.cache_ttl_hours * 3600,
-            mcp_ttl_seconds=config.collection.cache_ttl_hours * 3600 // 2,  # Half default for MCP
             enable_metrics=True
         )
         

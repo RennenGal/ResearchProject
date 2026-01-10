@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ..api.uniprot_client import UnifiedUniProtClient, get_protein_with_isoforms, get_proteins_batch
+from ..api.uniprot_client import UnifiedUniProtClient
 from ..models.entities import InterProProteinModel, ProteinModel
 from ..config import get_config
 from ..errors import APIError, NetworkError, DataError, ValidationError, ErrorContext, create_error_context
@@ -286,12 +286,13 @@ class UniProtIsoformCollector:
                         f"expected {protein.exon_count}, got {actual_exon_count}"
                     )
         
-        # Validate TIM barrel location coordinates
+        # Validate TIM barrel location coordinates (only if location has meaningful data)
         if protein.tim_barrel_location and protein.sequence_length:
             location = protein.tim_barrel_location
-            if isinstance(location, dict):
+            if isinstance(location, dict) and location:  # Check if dict is not empty
                 start = location.get("start", 0)
                 end = location.get("end", 0)
+                # Only validate if we have actual coordinate values
                 if start > 0 and end > 0:
                     if start > protein.sequence_length or end > protein.sequence_length:
                         raise ValidationError(

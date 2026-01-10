@@ -79,7 +79,7 @@ class TestDataValidationConsistency:
         For any protein sequence containing invalid characters (non-amino acid characters),
         the system should reject the sequence and validation should fail.
         """
-        validator = ProteinSequenceValidator()
+        validator = ProteinSequenceValidator(allow_extended=False)  # Use strict validation
         result = validator.validate(sequence)
         
         # Should fail validation due to invalid characters
@@ -253,7 +253,7 @@ class TestDataValidationConsistency:
         For any empty or very short sequence (< 10 characters), validation should
         consistently reject the sequence as invalid.
         """
-        validator = ProteinSequenceValidator()
+        validator = ProteinSequenceValidator(allow_extended=False)  # Use strict validation
         result = validator.validate(sequence)
         
         clean_sequence = sequence.strip()
