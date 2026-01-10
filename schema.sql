@@ -8,42 +8,46 @@ USE protein_collector;
 -- Create test database for testing
 CREATE DATABASE IF NOT EXISTS test_protein_data CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- PFAM families with TIM barrel annotations
-CREATE TABLE IF NOT EXISTS pfam_families (
+-- Unified table for both PFAM families and InterPro entries with TIM barrel annotations
+CREATE TABLE IF NOT EXISTS tim_barrel_entries (
     accession VARCHAR(20) PRIMARY KEY,
+    entry_type VARCHAR(20) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
+    interpro_type VARCHAR(50),
     tim_barrel_annotation TEXT NOT NULL,
+    member_databases JSON,
     interpro_id VARCHAR(20),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
-    INDEX idx_pfam_name (name),
-    INDEX idx_pfam_interpro (interpro_id),
-    INDEX idx_pfam_created (created_at)
+    INDEX idx_tim_barrel_type (entry_type),
+    INDEX idx_tim_barrel_name (name),
+    INDEX idx_tim_barrel_interpro (interpro_id),
+    INDEX idx_tim_barrel_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Human proteins belonging to PFAM families (from InterPro)
+-- Human proteins belonging to TIM barrel entries (from InterPro)
+-- Uses composite primary key to allow same protein in multiple entries
 CREATE TABLE IF NOT EXISTS interpro_proteins (
-    uniprot_id VARCHAR(20) PRIMARY KEY,
-    pfam_accession VARCHAR(20) NOT NULL,
+    uniprot_id VARCHAR(20) NOT NULL,
+    tim_barrel_accession VARCHAR(20) NOT NULL,
     name VARCHAR(255),
     organism VARCHAR(100) DEFAULT 'Homo sapiens',
-    basic_metadata JSON,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (pfam_accession) REFERENCES pfam_families(accession) ON DELETE CASCADE,
-    INDEX idx_interpro_pfam (pfam_accession),
+    PRIMARY KEY (uniprot_id, tim_barrel_accession),
+    FOREIGN KEY (tim_barrel_accession) REFERENCES tim_barrel_entries(accession) ON DELETE CASCADE,
+    INDEX idx_interpro_tim_barrel (tim_barrel_accession),
     INDEX idx_interpro_organism (organism),
     INDEX idx_interpro_name (name),
     INDEX idx_interpro_created (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Protein isoforms with detailed annotations (from UniProt)
 CREATE TABLE IF NOT EXISTS proteins (
     isoform_id VARCHAR(30) PRIMARY KEY,
     parent_protein_id VARCHAR(20) NOT NULL,
+    parent_tim_barrel_accession VARCHAR(20) NOT NULL,
     sequence TEXT NOT NULL,
     sequence_length INTEGER NOT NULL,
     exon_annotations JSON,
@@ -52,11 +56,12 @@ CREATE TABLE IF NOT EXISTS proteins (
     organism VARCHAR(100),
     name VARCHAR(255),
     description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (parent_protein_id) REFERENCES interpro_proteins(uniprot_id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_protein_id, parent_tim_barrel_accession) 
+        REFERENCES interpro_proteins(uniprot_id, tim_barrel_accession) ON DELETE CASCADE,
     INDEX idx_proteins_parent (parent_protein_id),
+    INDEX idx_proteins_parent_composite (parent_protein_id, parent_tim_barrel_accession),
     INDEX idx_proteins_organism (organism),
     INDEX idx_proteins_length (sequence_length),
     INDEX idx_proteins_exon_count (exon_count),
@@ -66,7 +71,7 @@ CREATE TABLE IF NOT EXISTS proteins (
     -- Full-text search on sequence (for BLAST-like searches)
     FULLTEXT KEY ft_sequence (sequence),
     FULLTEXT KEY ft_description (description)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- Collection progress tracking table (optional for research)
 CREATE TABLE IF NOT EXISTS collection_progress (
@@ -92,19 +97,24 @@ SELECT
     p.organism,
     p.sequence_length,
     p.exon_count,
-    ip.pfam_accession,
-    pf.name as pfam_name,
+    p.parent_tim_barrel_accession as tim_barrel_accession,
+    tbe.name as tim_barrel_name,
+    tbe.entry_type as tim_barrel_type,
     CASE WHEN p.tim_barrel_location IS NOT NULL THEN 1 ELSE 0 END as has_tim_barrel,
     p.created_at
 FROM proteins p
-JOIN interpro_proteins ip ON p.parent_protein_id = ip.uniprot_id
-JOIN pfam_families pf ON ip.pfam_accession = pf.accession;
+JOIN interpro_proteins ip ON p.parent_protein_id = ip.uniprot_id 
+    AND p.parent_tim_barrel_accession = ip.tim_barrel_accession
+JOIN tim_barrel_entries tbe ON ip.tim_barrel_accession = tbe.accession;
 
 -- Create view for collection statistics
 CREATE OR REPLACE VIEW collection_stats AS
 SELECT 
-    (SELECT COUNT(*) FROM pfam_families) as pfam_families_count,
+    (SELECT COUNT(*) FROM tim_barrel_entries) as tim_barrel_entries_count,
+    (SELECT COUNT(*) FROM tim_barrel_entries WHERE entry_type = 'pfam') as pfam_entries_count,
+    (SELECT COUNT(*) FROM tim_barrel_entries WHERE entry_type = 'interpro') as interpro_entries_count,
     (SELECT COUNT(*) FROM interpro_proteins) as interpro_proteins_count,
+    (SELECT COUNT(DISTINCT uniprot_id) FROM interpro_proteins) as unique_proteins_count,
     (SELECT COUNT(*) FROM proteins) as protein_isoforms_count,
     (SELECT COUNT(*) FROM proteins WHERE tim_barrel_location IS NOT NULL) as tim_barrel_proteins_count,
     (SELECT AVG(sequence_length) FROM proteins) as avg_sequence_length,

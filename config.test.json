@@ -1,0 +1,39 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": 3306,
+    "database": "test_protein_data",
+    "username": "test_user",
+    "password": "test_password"
+  },
+  "api": {
+    "interpro_base_url": "https://www.ebi.ac.uk/interpro/api/",
+    "uniprot_base_url": "https://rest.uniprot.org/",
+    "interpro_requests_per_second": 100.0,
+    "uniprot_requests_per_second": 100.0
+  },
+  "rate_limiting": {
+    "interpro_requests_per_second": 100.0,
+    "interpro_burst_limit": 200,
+    "interpro_burst_window_seconds": 60,
+    "uniprot_requests_per_second": 100.0,
+    "uniprot_burst_limit": 200,
+    "uniprot_burst_window_seconds": 60,
+    "violation_initial_delay": 1.0,
+    "violation_backoff_multiplier": 2.0,
+    "violation_max_delay": 30.0,
+    "soft_limit_threshold": 0.8,
+    "enable_monitoring": true,
+    "enable_reporting": true
+  },
+  "retry": {
+    "max_retries": 5,
+    "initial_delay": 2.0,
+    "backoff_multiplier": 3.0,
+    "max_delay": 120.0
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "text"
+  }
+}

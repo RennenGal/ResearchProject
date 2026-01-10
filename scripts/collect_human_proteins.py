@@ -238,10 +238,17 @@ class HumanProteinCollector:
                 organism = organism_name
         
         # Extract additional metadata
+        gene_info = protein_data.get('metadata', {}).get('gene', '')
+        gene_name = ''
+        if isinstance(gene_info, dict):
+            gene_name = gene_info.get('name', '')
+        elif isinstance(gene_info, str):
+            gene_name = gene_info
+        
         basic_metadata = {
             'source_database': protein_data.get('metadata', {}).get('source_database', ''),
             'length': protein_data.get('metadata', {}).get('length'),
-            'gene_name': protein_data.get('metadata', {}).get('gene', {}).get('name', ''),
+            'gene_name': gene_name,
             'protein_existence': protein_data.get('metadata', {}).get('protein_existence')
         }
         

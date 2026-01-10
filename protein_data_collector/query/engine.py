@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, text
 
 from ..database.connection import get_db_session
-from ..database.schema import PfamFamily, InterProProtein, Protein
-from ..models.entities import PfamFamilyModel, InterProProteinModel, ProteinModel
+from ..database.schema import TIMBarrelEntry, InterProProtein, Protein
+from ..models.entities import TIMBarrelEntryModel, InterProProteinModel, ProteinModel
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +70,9 @@ class QueryEngine:
         self.logger.info(f"Searching for PFAM family: {pfam_id}")
         
         with get_db_session() as session:
-            # Get PFAM family
-            pfam_family = session.query(PfamFamily).filter(
-                PfamFamily.accession == pfam_id
+            # Get TIM barrel entry
+            tim_barrel_entry = session.query(TIMBarrelEntry).filter(
+                TIMBarrelEntry.accession == pfam_id
             ).first()
             
             if not pfam_family:
@@ -352,7 +352,7 @@ class QueryEngine:
         
         with get_db_session() as session:
             # Count entities
-            pfam_count = session.query(PfamFamily).count()
+            tim_barrel_count = session.query(TIMBarrelEntry).count()
             protein_count = session.query(InterProProtein).count()
             isoform_count = session.query(Protein).count()
             
@@ -393,8 +393,8 @@ class QueryEngine:
                 "tim_barrel_coverage": (tim_barrel_count / isoform_count * 100) if isoform_count > 0 else 0
             }
     
-    def _format_pfam_family(self, pfam_family: PfamFamily) -> Dict[str, Any]:
-        """Format PFAM family for display."""
+    def _format_tim_barrel_entry(self, tim_barrel_entry: TIMBarrelEntry) -> Dict[str, Any]:
+        """Format TIM barrel entry for display."""
         return {
             "accession": pfam_family.accession,
             "name": pfam_family.name,

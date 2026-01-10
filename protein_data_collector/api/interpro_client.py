@@ -552,10 +552,12 @@ class InterProAPIClient:
             next_url = None
             page = 1
             
-            # Query proteins in the PFAM family filtered by organism
+            # Map organism to taxonomy ID
+            organism_tax_id = "9606" if organism == "Homo sapiens" else organism
+            
+            # Query parameters
             params = {
-                'page_size': page_size,
-                'tax_lineage': organism
+                'page_size': page_size
             }
             
             while True:
@@ -566,12 +568,14 @@ class InterProAPIClient:
                     extra={
                         "pfam_accession": pfam_accession,
                         "organism": organism,
+                        "taxonomy_id": organism_tax_id,
                         "page": page,
                         "page_size": page_size
                     }
                 )
                 
-                endpoint = f'protein/UniProt/entry/pfam/{pfam_accession}/'
+                # Use correct endpoint: taxonomy first, then entry
+                endpoint = f'protein/UniProt/taxonomy/uniprot/{organism_tax_id}/entry/pfam/{pfam_accession}/'
                 if next_url:
                     # Use the next URL provided by the API
                     response_data = await self._make_request(next_url.replace(self.config.interpro_base_url, ''))
@@ -756,10 +760,17 @@ class InterProAPIClient:
                     organism = organism_name
             
             # Extract additional metadata
+            gene_info = protein_data.get('metadata', {}).get('gene', '')
+            gene_name = ''
+            if isinstance(gene_info, dict):
+                gene_name = gene_info.get('name', '')
+            elif isinstance(gene_info, str):
+                gene_name = gene_info
+            
             basic_metadata = {
                 'source_database': protein_data.get('metadata', {}).get('source_database', ''),
                 'length': protein_data.get('metadata', {}).get('length'),
-                'gene_name': protein_data.get('metadata', {}).get('gene', {}).get('name', ''),
+                'gene_name': gene_name,
                 'protein_existence': protein_data.get('metadata', {}).get('protein_existence')
             }
             
@@ -803,10 +814,12 @@ class InterProAPIClient:
             next_url = None
             page = 1
             
-            # Query proteins in the InterPro entry filtered by organism
+            # Map organism to taxonomy ID
+            organism_tax_id = "9606" if organism == "Homo sapiens" else organism
+            
+            # Query parameters
             params = {
-                'page_size': page_size,
-                'tax_lineage': organism
+                'page_size': page_size
             }
             
             while True:
@@ -817,12 +830,14 @@ class InterProAPIClient:
                     extra={
                         "interpro_accession": interpro_accession,
                         "organism": organism,
+                        "taxonomy_id": organism_tax_id,
                         "page": page,
                         "page_size": page_size
                     }
                 )
                 
-                endpoint = f'protein/UniProt/entry/interpro/{interpro_accession}/'
+                # Use correct endpoint: taxonomy first, then entry
+                endpoint = f'protein/UniProt/taxonomy/uniprot/{organism_tax_id}/entry/interpro/{interpro_accession}/'
                 if next_url:
                     # Use the next URL provided by the API
                     response_data = await self._make_request(next_url.replace(self.config.interpro_base_url, ''))

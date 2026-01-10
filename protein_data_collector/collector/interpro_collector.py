@@ -11,8 +11,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ..api.interpro_client import InterProAPIClient, get_tim_barrel_pfam_families, get_human_proteins_for_pfam_families
-from ..models.entities import PfamFamilyModel, InterProProteinModel
+from ..api.interpro_client import InterProAPIClient, get_tim_barrel_entries, get_human_proteins_for_tim_barrel_entries
+from ..models.entities import TIMBarrelEntryModel, InterProProteinModel
 from ..config import get_config
 from ..retry import get_retry_controller
 from ..errors import DataError, APIError
@@ -50,7 +50,7 @@ class CollectionStats:
 @dataclass
 class CollectionResult:
     """Result of data collection operation."""
-    pfam_families: List[PfamFamilyModel] = field(default_factory=list)
+    tim_barrel_entries: List[TIMBarrelEntryModel] = field(default_factory=list)
     human_proteins: List[InterProProteinModel] = field(default_factory=list)
     stats: CollectionStats = field(default_factory=CollectionStats)
     errors: List[str] = field(default_factory=list)
@@ -87,18 +87,18 @@ class InterProCollector:
         if self.client:
             await self.client.close()
     
-    async def collect_tim_barrel_pfam_families(
+    async def collect_tim_barrel_entries(
         self, 
         page_size: int = 200
-    ) -> Tuple[List[PfamFamilyModel], CollectionStats]:
+    ) -> Tuple[List[TIMBarrelEntryModel], CollectionStats]:
         """
-        Collect all PFAM families with TIM barrel annotations.
+        Collect all TIM barrel entries (both PFAM families and InterPro entries).
         
         Args:
             page_size: Number of results per page for API queries
             
         Returns:
-            Tuple of (collected families, collection statistics)
+            Tuple of (collected entries, collection statistics)
             
         Raises:
             APIError: For API-related errors
@@ -106,16 +106,17 @@ class InterProCollector:
         """
         stats = CollectionStats(start_time=datetime.now())
         
-        self.logger.info("Starting PFAM family collection for TIM barrel annotations")
+        self.logger.info("Starting TIM barrel entry collection (PFAM families and InterPro entries)")
         
         try:
             if self.client is None:
                 self.client = InterProAPIClient()
             
-            # Collect PFAM families with TIM barrel annotations
-            families = await get_tim_barrel_pfam_families(self.client, page_size)
+            # Collect TIM barrel entries (both PFAM and InterPro)
+            entries = await get_tim_barrel_entries(self.client, page_size)
             
-            stats.pfam_families_found = len(families)
+            stats.pfam_families_found = len([e for e in entries if e.is_pfam])
+            stats.interpro_entries_found = len([e for e in entries if e.is_interpro])
             stats.pfam_families_processed = len(families)
             
             self.logger.info(
@@ -126,7 +127,7 @@ class InterProCollector:
                 }
             )
             
-            return families, stats
+            return entries, stats
             
         except Exception as e:
             stats.api_errors += 1
@@ -139,9 +140,9 @@ class InterProCollector:
         finally:
             stats.end_time = datetime.now()
     
-    async def collect_human_proteins_for_families(
+    async def collect_human_proteins_for_entries(
         self, 
-        pfam_families: List[PfamFamilyModel],
+        tim_barrel_entries: List[TIMBarrelEntryModel],
         page_size: int = 200,
         organism: str = "Homo sapiens"
     ) -> Tuple[List[InterProProteinModel], CollectionStats]:
@@ -275,8 +276,8 @@ class InterProCollector:
             
             # Phase 2: Collect human proteins
             self.logger.info("Phase 2: Collecting human proteins for PFAM families")
-            proteins, protein_stats = await self.collect_human_proteins_for_families(
-                families, page_size, organism
+            proteins, protein_stats = await self.collect_human_proteins_for_entries(
+                entries, page_size, organism
             )
             result.human_proteins = proteins
             

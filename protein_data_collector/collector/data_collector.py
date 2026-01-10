@@ -14,9 +14,9 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..models.entities import PfamFamilyModel, InterProProteinModel, ProteinModel
+from ..models.entities import TIMBarrelEntryModel, InterProProteinModel, ProteinModel
 from ..database.connection import get_database_manager, get_db_transaction
-from ..database.schema import PfamFamily, InterProProtein, Protein
+from ..database.schema import TIMBarrelEntry, InterProProtein, Protein
 from ..database.storage import DatabaseStorage, StorageResult
 from .interpro_collector import InterProCollector, CollectionResult as InterProResult
 from .uniprot_collector import UniProtIsoformCollector, IsoformCollectionReport
@@ -103,7 +103,7 @@ class CollectionProgress:
 class CollectionReport:
     """Complete collection operation report."""
     progress: CollectionProgress = field(default_factory=CollectionProgress)
-    pfam_families: List[PfamFamilyModel] = field(default_factory=list)
+    pfam_families: List[TIMBarrelEntryModel] = field(default_factory=list)  # For compatibility, contains PFAM entries
     interpro_proteins: List[InterProProteinModel] = field(default_factory=list)
     uniprot_isoforms: List[ProteinModel] = field(default_factory=list)
     validation_errors: List[str] = field(default_factory=list)
@@ -249,41 +249,45 @@ class DataCollector:
         if self.uniprot_collector:
             await self.uniprot_collector.__aexit__(exc_type, exc_val, exc_tb)
     
-    async def collect_pfam_families(self, page_size: int = 200) -> List[PfamFamilyModel]:
+    async def collect_tim_barrel_entries(self, page_size: int = 200) -> List[TIMBarrelEntryModel]:
         """
-        Phase 1: Collect PFAM families with TIM barrel annotations.
+        Phase 1: Collect TIM barrel entries (both PFAM families and InterPro entries).
         
         Args:
             page_size: Number of results per page for API queries
             
         Returns:
-            List of collected PFAM families
+            List of collected TIM barrel entries
         """
         if self.progress.phase in ["pfam_families", "interpro_proteins", "uniprot_isoforms", "storage", "completed"]:
-            self.logger.info("PFAM families phase already completed, skipping")
+            self.logger.info("TIM barrel entries phase already completed, skipping")
             return []
         
-        self.logger.info("Starting Phase 1: PFAM family collection")
-        self.progress.phase = "pfam_families"
+        self.logger.info("Starting Phase 1: TIM barrel entry collection")
+        self.progress.phase = "pfam_families"  # Keep same phase name for compatibility
         self.progress.start_time = self.progress.start_time or datetime.now()
         self._save_progress()
         
         try:
-            families, stats = await self.interpro_collector.collect_tim_barrel_pfam_families(page_size)
+            entries, stats = await self.interpro_collector.collect_tim_barrel_entries(page_size)
             
-            self.progress.pfam_families_collected = len(families)
+            self.progress.pfam_families_collected = len([e for e in entries if e.is_pfam])
             self.logger.info(
-                "Phase 1 completed: collected %d PFAM families",
-                len(families),
+                "Phase 1 completed: collected %d TIM barrel entries (%d PFAM, %d InterPro)",
+                len(entries),
+                len([e for e in entries if e.is_pfam]),
+                len([e for e in entries if e.is_interpro]),
                 extra={
-                    "families_collected": len(families),
+                    "total_entries": len(entries),
+                    "pfam_families": len([e for e in entries if e.is_pfam]),
+                    "interpro_entries": len([e for e in entries if e.is_interpro]),
                     "duration_seconds": stats.duration_seconds,
                     "success_rate": stats.success_rate
                 }
             )
             
             self._save_progress()
-            return families
+            return entries
             
         except Exception as e:
             error_msg = f"Phase 1 failed: {str(e)}"
@@ -293,7 +297,7 @@ class DataCollector:
             raise
     
     async def collect_interpro_proteins(self, 
-                                      pfam_families: List[PfamFamilyModel],
+                                      tim_barrel_entries: List[TIMBarrelEntryModel],
                                       page_size: int = 200) -> List[InterProProteinModel]:
         """
         Phase 2: Collect human proteins for PFAM families.
@@ -340,7 +344,7 @@ class DataCollector:
             raise
     
     async def collect_human_proteins(self, 
-                                   pfam_families: List[PfamFamilyModel],
+                                   tim_barrel_entries: List[TIMBarrelEntryModel],
                                    page_size: int = 200) -> List[InterProProteinModel]:
         """
         Alias for collect_interpro_proteins for backward compatibility.
@@ -352,7 +356,7 @@ class DataCollector:
         Returns:
             List of collected InterPro proteins
         """
-        return await self.collect_interpro_proteins(pfam_families, page_size)
+        return await self.collect_interpro_proteins(tim_barrel_entries, page_size)
     
     async def collect_uniprot_isoforms(self, 
                                      interpro_proteins: List[InterProProteinModel]) -> List[ProteinModel]:
@@ -440,9 +444,9 @@ class DataCollector:
         )
         
         try:
-            # Phase 1: PFAM families
-            pfam_families = await self.collect_pfam_families(page_size)
-            report.pfam_families = pfam_families
+            # Phase 1: TIM barrel entries
+            tim_barrel_entries = await self.collect_tim_barrel_entries(page_size)
+            report.pfam_families = [e for e in tim_barrel_entries if e.is_pfam]  # Keep compatibility
             
             if not pfam_families and self.progress.pfam_families_collected == 0:
                 error_msg = "No PFAM families found with TIM barrel annotations"
@@ -451,7 +455,7 @@ class DataCollector:
                 return report
             
             # Phase 2: InterPro proteins
-            interpro_proteins = await self.collect_interpro_proteins(pfam_families, page_size)
+            interpro_proteins = await self.collect_interpro_proteins(tim_barrel_entries, page_size)
             report.interpro_proteins = interpro_proteins
             
             if not interpro_proteins and self.progress.interpro_proteins_collected == 0:
@@ -467,7 +471,7 @@ class DataCollector:
             # Phase 4: Data storage (if requested)
             if store_data:
                 await self.store_collected_data(
-                    pfam_families, interpro_proteins, uniprot_isoforms, report
+                    tim_barrel_entries, interpro_proteins, uniprot_isoforms, report
                 )
             
             # Mark as completed
@@ -494,7 +498,7 @@ class DataCollector:
         return report
     
     async def store_collected_data(self,
-                                 pfam_families: List[PfamFamilyModel],
+                                 tim_barrel_entries: List[TIMBarrelEntryModel],
                                  interpro_proteins: List[InterProProteinModel],
                                  uniprot_isoforms: List[ProteinModel],
                                  report: CollectionReport) -> None:

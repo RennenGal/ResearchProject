@@ -12,7 +12,7 @@ from hypothesis import given, strategies as st, settings, HealthCheck
 from sqlalchemy.exc import IntegrityError
 
 from protein_data_collector.database import (
-    Base, PfamFamily, InterProProtein, Protein, DatabaseManager
+    Base, TIMBarrelEntry, InterProProtein, Protein, DatabaseManager
 )
 from protein_data_collector.config import DatabaseConfig
 
@@ -49,7 +49,7 @@ def get_test_db_manager():
 
 
 # Hypothesis strategies for generating test data
-pfam_accession_strategy = st.text(
+tim_barrel_accession_strategy = st.text(
     alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd")),
     min_size=5,
     max_size=20
@@ -91,13 +91,13 @@ class TestDatabaseSchemaIntegrity:
     """Property-based tests for database schema integrity."""
     
     @given(
-        accession=pfam_accession_strategy,
+        accession=tim_barrel_accession_strategy,
         name=protein_name_strategy,
         description=description_strategy,
         tim_barrel_annotation=description_strategy
     )
     @settings(max_examples=100, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_pfam_family_storage_completeness(
+    def test_tim_barrel_entry_storage_completeness(
         self, accession, name, description, tim_barrel_annotation
     ):
         """
@@ -108,22 +108,23 @@ class TestDatabaseSchemaIntegrity:
         """
         with get_test_db_manager() as test_db_manager:
             with test_db_manager.get_transaction() as session:
-                # Create and store PFAM family
-                pfam_family = PfamFamily(
+                # Create and store TIM barrel entry
+                tim_barrel_entry = TIMBarrelEntry(
                     accession=accession,
+                    entry_type='pfam',  # Add required field
                     name=name,
                     description=description,
                     tim_barrel_annotation=tim_barrel_annotation
                 )
-                session.add(pfam_family)
+                session.add(tim_barrel_entry)
                 session.flush()  # Ensure it's written to database
                 
                 # Verify all required fields are stored
-                stored_family = session.query(PfamFamily).filter_by(accession=accession).first()
-                assert stored_family is not None
-                assert stored_family.accession == accession
-                assert stored_family.name == name
-                assert stored_family.description == description
-                assert stored_family.tim_barrel_annotation == tim_barrel_annotation
-                assert stored_family.created_at is not None
-                assert isinstance(stored_family.created_at, datetime)
+                stored_entry = session.query(TIMBarrelEntry).filter_by(accession=accession).first()
+                assert stored_entry is not None
+                assert stored_entry.accession == accession
+                assert stored_entry.name == name
+                assert stored_entry.description == description
+                assert stored_entry.tim_barrel_annotation == tim_barrel_annotation
+                assert stored_entry.created_at is not None
+                assert isinstance(stored_entry.created_at, datetime)

@@ -10,7 +10,7 @@ This module defines SQLAlchemy models for the three-tier hierarchy:
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import (
-    Column, String, Text, Integer, DateTime, ForeignKey, JSON, Index
+    Column, String, Text, Integer, DateTime, ForeignKey, JSON, Index, ForeignKeyConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship, Mapped
 from sqlalchemy.sql import func
@@ -61,7 +61,7 @@ class InterProProtein(Base):
     tim_barrel_accession = Column(
         String(20), 
         ForeignKey("tim_barrel_entries.accession", ondelete="CASCADE"), 
-        nullable=False,
+        primary_key=True,
         doc="Associated TIM barrel entry accession (PFAM or InterPro)"
     )
     name = Column(String(255), doc="Protein name")
@@ -86,9 +86,13 @@ class Protein(Base):
     isoform_id = Column(String(30), primary_key=True, doc="UniProt isoform identifier")
     parent_protein_id = Column(
         String(20), 
-        ForeignKey("interpro_proteins.uniprot_id", ondelete="CASCADE"), 
         nullable=False,
         doc="Parent protein UniProt ID"
+    )
+    parent_tim_barrel_accession = Column(
+        String(20),
+        nullable=False,
+        doc="Parent protein TIM barrel accession"
     )
     sequence = Column(Text, nullable=False, doc="Protein amino acid sequence")
     sequence_length = Column(Integer, nullable=False, doc="Length of protein sequence")
@@ -100,8 +104,20 @@ class Protein(Base):
     description = Column(Text, doc="Protein description")
     created_at = Column(DateTime, default=func.now(), doc="Record creation timestamp")
     
+    # Composite foreign key constraint
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["parent_protein_id", "parent_tim_barrel_accession"],
+            ["interpro_proteins.uniprot_id", "interpro_proteins.tim_barrel_accession"],
+            ondelete="CASCADE"
+        ),
+    )
+    
     # Relationship
-    parent_protein: Mapped["InterProProtein"] = relationship("InterProProtein", back_populates="isoforms")
+    parent_protein: Mapped["InterProProtein"] = relationship(
+        "InterProProtein", 
+        back_populates="isoforms"
+    )
     
     def __repr__(self) -> str:
         return f"<Protein(isoform_id='{self.isoform_id}', parent='{self.parent_protein_id}')>"
@@ -110,7 +126,9 @@ class Protein(Base):
 # Create indexes for efficient querying
 Index("idx_tim_barrel_entries_type", TIMBarrelEntry.entry_type)
 Index("idx_interpro_proteins_tim_barrel", InterProProtein.tim_barrel_accession)
+Index("idx_interpro_proteins_uniprot", InterProProtein.uniprot_id)
 Index("idx_proteins_parent", Protein.parent_protein_id)
+Index("idx_proteins_parent_composite", Protein.parent_protein_id, Protein.parent_tim_barrel_accession)
 Index("idx_interpro_proteins_organism", InterProProtein.organism)
 Index("idx_proteins_sequence_length", Protein.sequence_length)
 Index("idx_proteins_exon_count", Protein.exon_count)
