@@ -1,16 +1,52 @@
 # Protein Data Collector
 
-A comprehensive system for collecting, storing, and analyzing protein data with a focus on TIM barrel proteins. This project provides automated data collection from InterPro and UniProt databases, with support for detailed isoform analysis and structural annotations.
+A comprehensive bioinformatics system for collecting, storing, and analyzing protein data with a focus on TIM barrel proteins. This project provides automated data collection from InterPro and UniProt databases, with support for detailed isoform analysis and structural annotations.
 
-## Features
+## 🚀 Quick Installation
 
-- **Automated Data Collection**: Collect TIM barrel protein families and human protein data from InterPro and UniProt
-- **Comprehensive Database Schema**: SQLite database with 67 UniProt fields across 9 categories
-- **Isoform Analysis**: Detailed protein isoform data including sequence, exon annotations, and TIM barrel locations
-- **RESTful API**: Query and export protein data through a FastAPI-based web service
-- **Property-Based Testing**: Comprehensive test suite with property-based testing for data integrity
-- **Rate Limiting**: Built-in rate limiting and retry mechanisms for API compliance
-- **Flexible Configuration**: Environment-based configuration with support for different deployment scenarios
+Get started in minutes with our automated installation scripts:
+
+### Linux/macOS
+```bash
+git clone https://github.com/RennenGal/ResearchProject.git
+cd ResearchProject
+./scripts/install.sh
+```
+
+### Windows (Command Prompt)
+```cmd
+git clone https://github.com/RennenGal/ResearchProject.git
+cd ResearchProject
+scripts\install.bat
+```
+
+### Windows (PowerShell)
+```powershell
+git clone https://github.com/RennenGal/ResearchProject.git
+cd ResearchProject
+.\scripts\install.ps1
+```
+
+The installation scripts will automatically:
+- ✅ Check Python 3.8+ and Git installation
+- ✅ Create and activate virtual environment
+- ✅ Install all dependencies
+- ✅ Set up configuration files
+- ✅ Run tests to verify installation
+- ✅ Provide next steps guidance
+
+For manual installation or troubleshooting, see [docs/prerequisites.md](docs/prerequisites.md).
+
+## ✨ Features
+
+- **🔄 Automated Data Collection**: Collect TIM barrel protein families and human protein data from InterPro and UniProt
+- **🗄️ Comprehensive Database Schema**: SQLite database with 67 UniProt fields across 9 categories
+- **🧬 Isoform Analysis**: Detailed protein isoform data including sequence, exon annotations, and TIM barrel locations
+- **🌐 RESTful API**: Query and export protein data through a FastAPI-based web service
+- **🧪 Property-Based Testing**: Comprehensive test suite with 86 tests ensuring data integrity
+- **⚡ Rate Limiting**: Built-in rate limiting and retry mechanisms for API compliance
+- **⚙️ Flexible Configuration**: Environment-based configuration with support for different deployment scenarios
+- **🔗 REST API Only**: Simplified architecture using UniProt REST API for reliable data access
 
 ## Quick Start
 
