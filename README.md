@@ -1,179 +1,253 @@
 # Protein Data Collector
 
-A comprehensive Python application for collecting and analyzing protein family data from InterPro, with a focus on TIM barrel protein structures.
+A comprehensive system for collecting, storing, and analyzing protein data with a focus on TIM barrel proteins. This project provides automated data collection from InterPro and UniProt databases, with support for detailed isoform analysis and structural annotations.
 
-## Overview
+## Features
 
-This project provides tools to collect, store, and analyze protein family data from the InterPro database. It specializes in identifying and cataloging TIM (Triosephosphate Isomerase) barrel protein structures, which are important enzyme folds found across many biological processes.
-
-## Key Features
-
-- **Unified Data Collection**: Collects both PFAM families and InterPro entries with TIM barrel annotations
-- **Hybrid Search Strategy**: Uses comprehensive search terms to find all relevant TIM barrel entries
-- **Database Integration**: Stores data in MySQL with proper schema and relationships
-- **API Integration**: Interfaces with InterPro REST API with rate limiting and caching
-- **Comprehensive Testing**: Includes unit tests and integration tests
-- **Clean Architecture**: Modular design with separation of concerns
-
-## Current Status
-
-✅ **49 TIM Barrel Entries Collected**
-- 18 PFAM families (PF entries)
-- 31 InterPro entries (IPR entries)
-- Unified storage in single database table
-- No artificial limits - collects all available entries
+- **Automated Data Collection**: Collect TIM barrel protein families and human protein data from InterPro and UniProt
+- **Comprehensive Database Schema**: SQLite database with 67 UniProt fields across 9 categories
+- **Isoform Analysis**: Detailed protein isoform data including sequence, exon annotations, and TIM barrel locations
+- **RESTful API**: Query and export protein data through a FastAPI-based web service
+- **Property-Based Testing**: Comprehensive test suite with property-based testing for data integrity
+- **Rate Limiting**: Built-in rate limiting and retry mechanisms for API compliance
+- **Flexible Configuration**: Environment-based configuration with support for different deployment scenarios
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.8+
-- MySQL database
-- Virtual environment (recommended)
+- Python 3.8 or higher
+- pip package manager
+- SQLite (included with Python)
 
 ### Installation
 
-1. Clone the repository:
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/protein-data-collector.git
+   cd protein-data-collector
+   ```
+
+2. **Create a virtual environment**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Set up configuration**
+   ```bash
+   cp config.json.example config.json
+   cp .env.example .env
+   ```
+   Edit these files to match your environment (see [Configuration](#configuration) section).
+
+5. **Initialize the database**
+   ```bash
+   python scripts/create_sqlite_simple.py
+   ```
+
+### Basic Usage
+
+1. **Collect TIM barrel entries**
+   ```bash
+   python scripts/collect_tim_barrel_entries.py
+   ```
+
+2. **Collect human proteins**
+   ```bash
+   python scripts/collect_human_proteins.py
+   ```
+
+3. **Start the API server**
+   ```bash
+   python -m protein_data_collector.server
+   ```
+
+4. **Query the data**
+   ```bash
+   curl http://localhost:8000/api/proteins?limit=10
+   ```
+
+## Database Schema
+
+The system uses a three-tier hierarchical structure:
+
+1. **TIM Barrel Entries** (`tim_barrel_entries`): PFAM families and InterPro entries with TIM barrel annotations
+2. **InterPro Proteins** (`interpro_proteins`): Human proteins belonging to TIM barrel families
+3. **Protein Isoforms** (`proteins`): Detailed isoform data with 67 UniProt fields
+
+### Key Features
+- **67 UniProt Fields**: Comprehensive protein data across 9 categories
+- **Hierarchical Relationships**: Foreign key constraints maintain data integrity
+- **Optimized Indexes**: Efficient querying for common use cases
+- **SQLite Backend**: Lightweight, serverless database perfect for research
+
+For detailed schema documentation, see [docs/database-schema.md](docs/database-schema.md).
+
+## API Documentation
+
+The system provides a RESTful API for querying protein data:
+
+### Endpoints
+
+- `GET /api/proteins` - Query protein isoforms with filtering
+- `GET /api/proteins/{protein_id}` - Get specific protein details
+- `GET /api/families` - List TIM barrel families
+- `GET /api/statistics` - Get database statistics
+- `GET /health` - Health check endpoint
+
+### Example Queries
+
 ```bash
-git clone https://github.com/RennenGal/ResearchProject.git
-cd ResearchProject
+# Get proteins from a specific family
+curl "http://localhost:8000/api/proteins?pfam_family=PF00121"
+
+# Get proteins with sequence length filter
+curl "http://localhost:8000/api/proteins?min_length=200&max_length=500"
+
+# Get protein statistics
+curl "http://localhost:8000/api/statistics"
 ```
-
-2. Create and activate virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Set up configuration:
-```bash
-cp config.json.example config.test.json
-# Edit config.test.json with your database settings
-```
-
-5. Set up database:
-```bash
-# Create MySQL database and user
-mysql -u root -p < test_schema.sql
-```
-
-### Usage
-
-#### Collect TIM Barrel Data
-```bash
-# Production collection
-python scripts/collect_tim_barrel_entries.py
-
-# Dry run (test without storing)
-python scripts/collect_tim_barrel_entries.py --dry-run
-
-# Verbose output
-python scripts/collect_tim_barrel_entries.py --verbose
-```
-
-#### View Collection Status
-```bash
-python scripts/tim_barrel_summary.py
-```
-
-#### Run Tests
-```bash
-pytest
-```
-
-## Project Structure
-
-```
-├── protein_data_collector/     # Main application package
-│   ├── api/                   # API clients (InterPro, UniProt)
-│   ├── database/              # Database models and connections
-│   ├── models/                # Data models and validation
-│   ├── collector/             # Data collection logic
-│   └── query/                 # Query processing
-├── scripts/                   # Collection and utility scripts
-├── tests/                     # Test suite
-├── config/                    # Configuration files
-└── docs/                      # Documentation (if any)
-```
-
-## Architecture
-
-### Data Collection Strategy
-
-The application uses a **hybrid search approach** to ensure comprehensive coverage:
-
-1. **Phase 1: Direct PFAM Family Search**
-   - Searches PFAM families using multiple TIM barrel-related terms
-   - Filters results to ensure relevance
-   - Captures protein family classifications
-
-2. **Phase 2: InterPro Entry Search**
-   - Searches InterPro entries (IPR records) for structural classifications
-   - Includes domains, superfamilies, and active sites
-   - Captures broader structural annotations
-
-3. **Unified Storage**
-   - All entries stored in single `tim_barrel_entries` table
-   - Automatic deduplication by accession
-   - Preserves entry type and metadata
-
-### Database Schema
-
-- **tim_barrel_entries**: Unified table for both PFAM and InterPro entries
-- **interpro_proteins**: Protein sequences with InterPro annotations
-- Proper foreign key relationships and indexing
 
 ## Configuration
 
-The application uses JSON configuration files:
+### Environment Variables
 
-- `config.test.json`: Test environment settings
-- `config/development.json`: Development settings
-- `config/production.json`: Production settings
+Create a `.env` file based on `.env.example`:
 
-Key configuration sections:
-- Database connection settings
-- API rate limiting
-- Logging configuration
-- Cache settings
+```bash
+# Database Configuration
+DATABASE_TYPE=sqlite
+DATABASE_PATH=db/protein_data.db
+
+# API Configuration
+INTERPRO_BASE_URL=https://www.ebi.ac.uk/interpro/api/
+UNIPROT_BASE_URL=https://rest.uniprot.org/
+
+# Rate Limiting
+INTERPRO_REQUESTS_PER_SECOND=10.0
+UNIPROT_REQUESTS_PER_SECOND=10.0
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FORMAT=text
+```
+
+### Configuration File
+
+Edit `config.json` for detailed configuration:
+
+```json
+{
+  "database": {
+    "type": "sqlite",
+    "path": "db/protein_data.db"
+  },
+  "api": {
+    "interpro_base_url": "https://www.ebi.ac.uk/interpro/api/",
+    "uniprot_base_url": "https://rest.uniprot.org/"
+  },
+  "rate_limiting": {
+    "interpro_requests_per_second": 10.0,
+    "uniprot_requests_per_second": 10.0
+  }
+}
+```
 
 ## Testing
 
-Comprehensive test suite includes:
-- Unit tests for individual components
-- Integration tests for API interactions
-- Database tests with fixtures
-- 92 tests passing, 0 failing
+The project includes a comprehensive test suite with both unit tests and property-based tests.
 
-Run tests:
+### Run All Tests
+
 ```bash
-pytest                    # All tests
-pytest tests/unit/        # Unit tests only
-pytest tests/integration/ # Integration tests only
+python -m pytest tests/ -v
 ```
+
+### Run Specific Test Categories
+
+```bash
+# API integration tests
+python -m pytest tests/test_api_integration.py -v
+
+# Property-based tests
+python -m pytest tests/test_complete_isoform_data_collection.py -v
+
+# Database tests
+python -m pytest tests/test_database_schema_integrity.py -v
+```
+
+### Test Configuration
+
+Tests use a separate configuration file (`config.test.json`) to avoid interfering with production data.
+
+## Data Collection Workflow
+
+1. **TIM Barrel Entries**: Collect PFAM families and InterPro entries with TIM barrel annotations
+2. **Human Proteins**: For each TIM barrel entry, collect associated human proteins from InterPro
+3. **Protein Isoforms**: For each human protein, collect detailed isoform data from UniProt
+
+### Collection Scripts
+
+- `scripts/collect_tim_barrel_entries.py` - Collect TIM barrel families and InterPro entries
+- `scripts/collect_human_proteins.py` - Collect human proteins for TIM barrel families
+
+## Architecture
+
+The system is built with a modular architecture:
+
+- **Data Models** (`protein_data_collector/models/`): Pydantic models for data validation
+- **Database Layer** (`protein_data_collector/database/`): SQLAlchemy models and connection management
+- **API Clients** (`protein_data_collector/api/`): InterPro and UniProt API clients with rate limiting
+- **Collectors** (`protein_data_collector/collector/`): Data collection orchestration
+- **Query Engine** (`protein_data_collector/query/`): Database querying and export functionality
+- **Web API** (`protein_data_collector/server.py`): FastAPI-based REST API
 
 ## Contributing
 
+We welcome contributions! Please see [docs/contributing.md](docs/contributing.md) for guidelines.
+
+### Development Setup
+
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
+3. Install development dependencies: `pip install -r requirements-dev.txt`
+4. Make your changes
+5. Run tests: `python -m pytest`
 6. Submit a pull request
 
 ## License
 
-This project is for research purposes. Please see LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Research Context
+## Acknowledgments
 
-This tool is part of a research project investigating TIM barrel protein structures and their evolutionary relationships. TIM barrels are one of the most common protein folds and are found in many essential enzymes across all domains of life.
+- **InterPro Database**: Protein family and domain data
+- **UniProt Database**: Comprehensive protein information
+- **PFAM Database**: Protein family classifications
+- **FastAPI**: Modern web framework for the API
+- **SQLAlchemy**: Database ORM and migrations
+- **Pydantic**: Data validation and serialization
 
-## Contact
+## Support
 
-For questions or collaboration opportunities, please open an issue on GitHub.
+For questions, issues, or contributions:
+
+- **Issues**: [GitHub Issues](https://github.com/yourusername/protein-data-collector/issues)
+- **Documentation**: [docs/](docs/) directory
+- **API Documentation**: Start the server and visit `http://localhost:8000/docs`
+
+## Project Status
+
+This project is actively maintained and used for TIM barrel protein research. The database currently contains:
+
+- 49 TIM barrel entries (18 PFAM families + 31 InterPro entries)
+- 407 human proteins associated with TIM barrel families
+- Comprehensive isoform data with structural annotations
+
+For the latest statistics, run the collection scripts or query the `/api/statistics` endpoint.

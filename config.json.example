@@ -1,9 +1,12 @@
 {
   "database": {
+    "type": "sqlite",
+    "path": "db/protein_data.db",
     "host": "localhost",
     "port": 3306,
     "database": "protein_data",
     "username": "protein_user",
+    "password": "",
     "pool_size": 10,
     "pool_recycle": 3600
   },

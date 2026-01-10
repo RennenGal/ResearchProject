@@ -29,6 +29,7 @@ class TestDatabaseConfig:
     def test_connection_url_generation(self):
         """Test MySQL connection URL generation."""
         config = DatabaseConfig(
+            type="mysql",
             host="testhost",
             port=3307,
             database="testdb",
@@ -41,11 +42,21 @@ class TestDatabaseConfig:
     def test_connection_url_no_password(self):
         """Test connection URL generation without password."""
         config = DatabaseConfig(
+            type="mysql",
             host="testhost",
             username="testuser",
             password=""
         )
         expected_url = "mysql+pymysql://testuser:@testhost:3306/protein_data"
+        assert config.connection_url == expected_url
+    
+    def test_sqlite_connection_url(self):
+        """Test SQLite connection URL generation."""
+        config = DatabaseConfig(
+            type="sqlite",
+            path="test_database.db"
+        )
+        expected_url = "sqlite:///test_database.db"
         assert config.connection_url == expected_url
 
 

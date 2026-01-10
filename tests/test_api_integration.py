@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from protein_data_collector.api.rest_api import app, get_query_engine
-from protein_data_collector.models.entities import PfamFamilyModel, InterProProteinModel, ProteinModel
+from protein_data_collector.models.entities import TIMBarrelEntryModel, InterProProteinModel, ProteinModel
 from protein_data_collector.collector.data_collector import CollectionReport, CollectionProgress
 
 
@@ -27,8 +27,9 @@ def client():
 @pytest.fixture
 def sample_pfam_family():
     """Sample PFAM family for testing."""
-    return PfamFamilyModel(
+    return TIMBarrelEntryModel(
         accession="PF00121",
+        entry_type="pfam",
         name="TIM",
         description="Triosephosphate isomerase",
         tim_barrel_annotation="TIM barrel fold"

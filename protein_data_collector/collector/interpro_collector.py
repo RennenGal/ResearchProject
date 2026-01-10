@@ -358,7 +358,7 @@ class InterProCollector:
         
         return valid_proteins, error_count
     
-    def get_pfam_family_summary(self, families: List[PfamFamilyModel]) -> Dict[str, Any]:
+    def get_pfam_family_summary(self, families: List[TIMBarrelEntryModel]) -> Dict[str, Any]:
         """
         Generate summary statistics for collected PFAM families.
         

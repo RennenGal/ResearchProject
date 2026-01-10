@@ -31,12 +31,12 @@ def uniprot_id_strategy(draw):
 def interpro_protein_strategy(draw):
     """Generate InterProProteinModel instances for testing."""
     uniprot_id = draw(uniprot_id_strategy())
-    pfam_accession = draw(st.text(min_size=5, max_size=15))
+    tim_barrel_accession = draw(st.text(min_size=5, max_size=15))
     name = draw(st.text(min_size=5, max_size=100))
     
     return InterProProteinModel(
         uniprot_id=uniprot_id,
-        pfam_accession=pfam_accession,
+        tim_barrel_accession=tim_barrel_accession,
         name=name,
         organism="Homo sapiens",
         basic_metadata={}

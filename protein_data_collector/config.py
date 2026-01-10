@@ -23,6 +23,8 @@ class RetryConfig:
 @dataclass
 class DatabaseConfig:
     """Database connection and configuration settings."""
+    type: str = "sqlite"  # "mysql" or "sqlite"
+    path: str = "protein_data.db"  # SQLite database file path
     host: str = "localhost"
     port: int = 3306
     database: str = "protein_data"
@@ -33,8 +35,11 @@ class DatabaseConfig:
     
     @property
     def connection_url(self) -> str:
-        """Generate MySQL connection URL."""
-        return f"mysql+pymysql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
+        """Generate database connection URL."""
+        if self.type == "sqlite":
+            return f"sqlite:///{self.path}"
+        else:
+            return f"mysql+pymysql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
 
 
 @dataclass
@@ -234,6 +239,8 @@ class SystemConfig:
         """Save configuration to JSON file."""
         config_data = {
             "database": {
+                "type": self.database.type,
+                "path": self.database.path,
                 "host": self.database.host,
                 "port": self.database.port,
                 "database": self.database.database,

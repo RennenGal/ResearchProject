@@ -136,6 +136,19 @@ cache/
 temp/
 .DS_Store
 
+# Temporary directories (following project organization)
+docs/temp/
+scripts/temp/
+
+# Database files
+*.db
+*.sqlite
+*.db-wal
+*.db-shm
+
+# Database directory
+db/
+
 # IDE
 .vscode/
 .idea/
@@ -144,8 +157,7 @@ temp/
 *~
 
 # Database
-*.db
-*.sqlite
+# (Database files are excluded above in project specific section)
 
 # Temporary files
 *.tmp

@@ -36,13 +36,16 @@ class DatabaseManager:
     
     def _get_connect_args(self) -> dict:
         """Get database-specific connection arguments."""
-        if "mysql" in self.config.connection_url:
+        if self.config.type == "sqlite":
+            return {
+                "check_same_thread": False,
+                "timeout": 20
+            }
+        elif "mysql" in self.config.connection_url:
             return {
                 "charset": "utf8mb4",
                 "autocommit": False
             }
-        elif "sqlite" in self.config.connection_url:
-            return {}
         else:
             return {}
     
@@ -93,30 +96,49 @@ class DatabaseManager:
         if self._engine is None:
             system_config = get_config()
             
-            # Enhanced connection pooling configuration
-            pool_size = system_config.collection.connection_pool_size if system_config.collection.enable_connection_pooling else self.config.pool_size
-            
-            self._engine = create_engine(
-                self.config.connection_url,
-                poolclass=QueuePool,
-                pool_size=pool_size,
-                pool_recycle=self.config.pool_recycle,
-                pool_pre_ping=True,  # Verify connections before use
-                pool_timeout=30,  # Timeout for getting connection from pool
-                max_overflow=pool_size // 2,  # Allow some overflow connections
-                echo=False,  # Set to True for SQL debugging
-                future=True,  # Use SQLAlchemy 2.0 style
-                connect_args=self._get_connect_args()
-            )
+            if self.config.type == "sqlite":
+                # SQLite-specific configuration
+                self._engine = create_engine(
+                    self.config.connection_url,
+                    echo=False,  # Set to True for SQL debugging
+                    future=True,  # Use SQLAlchemy 2.0 style
+                    connect_args=self._get_connect_args()
+                )
+                
+                # Enable SQLite optimizations
+                @event.listens_for(self._engine, "connect")
+                def set_sqlite_pragma(dbapi_connection, connection_record):
+                    cursor = dbapi_connection.cursor()
+                    cursor.execute("PRAGMA foreign_keys=ON")
+                    cursor.execute("PRAGMA journal_mode=WAL")
+                    cursor.execute("PRAGMA synchronous=NORMAL")
+                    cursor.execute("PRAGMA cache_size=10000")
+                    cursor.execute("PRAGMA temp_store=memory")
+                    cursor.close()
+                
+            else:
+                # MySQL configuration
+                pool_size = system_config.collection.connection_pool_size if system_config.collection.enable_connection_pooling else self.config.pool_size
+                
+                self._engine = create_engine(
+                    self.config.connection_url,
+                    poolclass=QueuePool,
+                    pool_size=pool_size,
+                    pool_recycle=self.config.pool_recycle,
+                    pool_pre_ping=True,  # Verify connections before use
+                    pool_timeout=30,  # Timeout for getting connection from pool
+                    max_overflow=pool_size // 2,  # Allow some overflow connections
+                    echo=False,  # Set to True for SQL debugging
+                    future=True,  # Use SQLAlchemy 2.0 style
+                    connect_args=self._get_connect_args()
+                )
             
             # Set up performance monitoring
             if system_config.collection.enable_performance_monitoring:
                 self._setup_performance_monitoring(self._engine)
             
-            logger.info(
-                f"Created database engine for {self.config.host}:{self.config.port}/{self.config.database} "
-                f"with pool_size={pool_size}"
-            )
+            db_info = f"SQLite: {self.config.path}" if self.config.type == "sqlite" else f"{self.config.host}:{self.config.port}/{self.config.database}"
+            logger.info(f"Created {self.config.type.upper()} database engine for {db_info}")
         return self._engine
     
     @property

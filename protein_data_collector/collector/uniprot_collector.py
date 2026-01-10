@@ -109,7 +109,7 @@ class UniProtIsoformCollector:
             uniprot_id,
             extra={
                 "uniprot_id": uniprot_id,
-                "pfam_accession": interpro_protein.pfam_accession,
+                "pfam_accession": interpro_protein.tim_barrel_accession,
                 "protein_name": interpro_protein.name
             }
         )
@@ -182,7 +182,7 @@ class UniProtIsoformCollector:
                 extra={
                     "uniprot_id": uniprot_id,
                     "isoform_count": len(proteins),
-                    "pfam_accession": interpro_protein.pfam_accession
+                    "pfam_accession": interpro_protein.tim_barrel_accession
                 }
             )
             
@@ -196,7 +196,7 @@ class UniProtIsoformCollector:
                 entity_id=uniprot_id,
                 entity_type="protein",
                 additional_data={
-                    "pfam_accession": interpro_protein.pfam_accession,
+                    "pfam_accession": interpro_protein.tim_barrel_accession,
                     "protein_name": interpro_protein.name
                 }
             )
@@ -208,7 +208,7 @@ class UniProtIsoformCollector:
                 extra={
                     "uniprot_id": uniprot_id,
                     "error_type": type(e).__name__,
-                    "pfam_accession": interpro_protein.pfam_accession
+                    "pfam_accession": interpro_protein.tim_barrel_accession
                 }
             )
             
