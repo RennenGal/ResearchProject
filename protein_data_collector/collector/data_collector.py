@@ -6,18 +6,16 @@ Phase 2 — Human proteins       : InterPro → proteins
 Phase 3 — Isoforms             : UniProt  → isoforms
 """
 
+import json
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional, Set
+from typing import List, Optional
 
 from ..database.connection import ensure_db, get_connection
 from ..database.storage import (
     get_all_proteins,
-    get_all_tim_barrel_entries,
-    get_isoforms_for_protein,
     get_proteins_without_isoforms,
     get_counts,
-    upsert_isoform,
     upsert_isoforms,
     upsert_proteins,
     upsert_tim_barrel_entries,
@@ -73,7 +71,6 @@ class DataCollector:
 
         entries = self._phase1_tim_barrel_entries()
         report.tim_barrel_entries = len(entries)
-        self.uniprot.tim_barrel_accessions = {e.accession for e in entries}
 
         proteins = self._phase2_human_proteins(entries)
         report.proteins_collected = len(proteins)
@@ -87,7 +84,6 @@ class DataCollector:
     def recollect_all_isoforms(self) -> CollectionReport:
         """Delete all isoform rows and re-fetch from UniProt (gets alternative isoforms)."""
         ensure_db(self.db_path)
-        self.uniprot.tim_barrel_accessions = self._load_tim_barrel_accessions()
         with get_connection(self.db_path) as conn:
             conn.execute("DELETE FROM isoforms")
             conn.commit()
@@ -104,7 +100,6 @@ class DataCollector:
     def resume_isoform_collection(self) -> CollectionReport:
         """Phase 3 only — collect isoforms for proteins not yet in the database."""
         ensure_db(self.db_path)
-        self.uniprot.tim_barrel_accessions = self._load_tim_barrel_accessions()
         report = CollectionReport()
 
         with get_connection(self.db_path) as conn:
@@ -130,12 +125,15 @@ class DataCollector:
         Returns the number of isoforms updated.
         """
         ensure_db(self.db_path)
-        self.uniprot.tim_barrel_accessions = self._load_tim_barrel_accessions()
 
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
-                "SELECT isoform_id, uniprot_id FROM isoforms "
-                "WHERE is_canonical = 1 AND tim_barrel_location IS NULL"
+                """
+                SELECT i.isoform_id, i.uniprot_id, p.tim_barrel_accession
+                FROM isoforms i
+                JOIN proteins p ON i.uniprot_id = p.uniprot_id
+                WHERE i.is_canonical = 1 AND i.tim_barrel_location IS NULL
+                """
             ).fetchall()
 
         updated = 0
@@ -143,15 +141,14 @@ class DataCollector:
         logger.info("Backfilling domain locations for %d canonical isoforms", total)
 
         for idx, row in enumerate(rows, 1):
-            uniprot_id = row["uniprot_id"]
-            isoform_id = row["isoform_id"]
-            loc = self.uniprot._get_tim_barrel_location(uniprot_id)
+            loc = self.uniprot._get_tim_barrel_location(
+                row["uniprot_id"], row["tim_barrel_accession"]
+            )
             if loc:
-                import json
                 with get_connection(self.db_path) as conn:
                     conn.execute(
                         "UPDATE isoforms SET tim_barrel_location = ? WHERE isoform_id = ?",
-                        (json.dumps(loc), isoform_id),
+                        (json.dumps(loc), row["isoform_id"]),
                     )
                     conn.commit()
                 updated += 1
@@ -198,9 +195,3 @@ class DataCollector:
             all_isoforms.extend(isoforms)
 
         return all_isoforms
-
-    def _load_tim_barrel_accessions(self) -> Set[str]:
-        """Read all TIM barrel accessions from the database."""
-        with get_connection(self.db_path) as conn:
-            rows = get_all_tim_barrel_entries(conn)
-        return {r["accession"] for r in rows}

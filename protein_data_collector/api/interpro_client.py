@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -41,37 +41,37 @@ class InterProClient:
                 if r.get("metadata", {}).get("accession")]
 
     def get_domain_boundaries(
-        self, uniprot_id: str, tim_barrel_accessions: Set[str]
+        self, uniprot_id: str, tim_barrel_accession: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Return the first TIM barrel domain boundary for *uniprot_id* from InterPro.
+        Return the TIM barrel domain boundary for *uniprot_id* from InterPro.
 
-        Matches entries whose accession is in *tim_barrel_accessions* (the set
-        collected during Phase 1).  Returns a dict {domain_id, start, end,
-        length, source} or None.
+        Uses the entry-centric endpoint:
+            entry/{db}/{accession}/protein/uniprot/{uid}
+        which directly returns the protein's entry_protein_locations for that entry.
+
+        Returns a dict {domain_id, start, end, length, source} or None.
         """
-        data = self._get(f"protein/uniprot/{uniprot_id}")
-        if not data or "results" not in data:
+        db = "pfam" if tim_barrel_accession.startswith("PF") else "interpro"
+        endpoint = f"entry/{db}/{tim_barrel_accession}/protein/uniprot/{uniprot_id}"
+        data = self._get(endpoint)
+        if not data:
             return None
 
-        for result in data["results"]:
-            for entry in result.get("entries", []):
-                meta = entry.get("metadata", {})
-                if meta.get("accession") in tim_barrel_accessions:
-                    for loc in entry.get("entry_protein_locations", []):
-                        frags = loc.get("fragments", [])
-                        if frags:
-                            start = frags[0].get("start")
-                            end = frags[-1].get("end")
-                            if start and end:
-                                return {
-                                    "domain_id": meta.get("accession"),
-                                    "domain_name": meta.get("name"),
-                                    "start": start,
-                                    "end": end,
-                                    "length": end - start + 1,
-                                    "source": "interpro_api",
-                                }
+        for protein in data.get("proteins", []):
+            for loc in protein.get("entry_protein_locations", []):
+                frags = loc.get("fragments", [])
+                if frags:
+                    start = frags[0].get("start")
+                    end = frags[-1].get("end")
+                    if start and end:
+                        return {
+                            "domain_id": tim_barrel_accession,
+                            "start": start,
+                            "end": end,
+                            "length": end - start + 1,
+                            "source": "interpro_api",
+                        }
         return None
 
     # ------------------------------------------------------------------
@@ -95,6 +95,8 @@ class InterProClient:
             raise APIError("InterPro rate limit exceeded", status_code=429)
         if not resp.ok:
             raise APIError(f"InterPro returned {resp.status_code}", status_code=resp.status_code)
+        if not resp.content:
+            return None
         return resp.json()
 
     def _paginate(self, endpoint: str, params: Dict[str, Any] = None) -> List[Dict[str, Any]]:

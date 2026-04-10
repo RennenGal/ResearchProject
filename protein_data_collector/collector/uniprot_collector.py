@@ -16,7 +16,7 @@ original 407-protein database.  Key decisions:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 from ..api.interpro_client import InterProClient
 from ..api.uniprot_client import UniProtClient
@@ -30,11 +30,9 @@ class UniProtCollector:
         self,
         uniprot: Optional[UniProtClient] = None,
         interpro: Optional[InterProClient] = None,
-        tim_barrel_accessions: Optional[Set[str]] = None,
     ):
         self.uniprot = uniprot or UniProtClient()
         self.interpro = interpro or InterProClient()
-        self.tim_barrel_accessions: Set[str] = tim_barrel_accessions or set()
 
     # ------------------------------------------------------------------
     # Public
@@ -89,7 +87,7 @@ class UniProtCollector:
         ensembl_gene_id = _extract_ensembl_gene_id(data)
         alphafold_id = _extract_alphafold_id(data)
         all_splice_features = _extract_all_splice_features(data)
-        tim_barrel_loc = self._get_tim_barrel_location(uid)
+        tim_barrel_loc = self._get_tim_barrel_location(uid, protein.tim_barrel_accession)
 
         # --- Canonical isoform ---
         canonical = Isoform(
@@ -137,12 +135,11 @@ class UniProtCollector:
 
         return isoforms
 
-    def _get_tim_barrel_location(self, uniprot_id: str) -> Optional[Dict[str, Any]]:
-        if not self.tim_barrel_accessions:
-            logger.debug("tim_barrel_accessions not set — skipping domain lookup for %s", uniprot_id)
-            return None
+    def _get_tim_barrel_location(
+        self, uniprot_id: str, tim_barrel_accession: str
+    ) -> Optional[Dict[str, Any]]:
         try:
-            return self.interpro.get_domain_boundaries(uniprot_id, self.tim_barrel_accessions)
+            return self.interpro.get_domain_boundaries(uniprot_id, tim_barrel_accession)
         except Exception as e:
             logger.warning("Could not get TIM barrel location for %s: %s", uniprot_id, e)
             return None
