@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "protein-data-collector"
+name = "tim-barrel-as"
 version = "0.1.0"
-description = "A bioinformatics application for collecting TIM barrel protein data"
+description = "Data collector for studying alternative splicing effects on TIM barrel protein structure"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Protein Data Collector Team", email = "team@protein-data-collector.com"},
+    {name = "Rennen Gal", email = "rennengal@post.bgu.ac.il"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -25,35 +25,15 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.0.0",
-    "httpx>=0.24.0",
+    "requests>=2.31.0",
     "tenacity>=8.2.0",
-    "click>=8.1.0",
-    "mysql-connector-python>=8.0.0",
-    "SQLAlchemy>=2.0.0",
-    "PyMySQL>=1.0.0",
-    "fastapi>=0.100.0",
-    "uvicorn>=0.22.0",
-    "structlog>=23.1.0",
-    "python-dotenv>=1.0.0",
-    "tqdm>=4.65.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "hypothesis>=6.80.0",
     "pytest-cov>=4.1.0",
-    "pytest-mock>=3.11.0",
-    "black>=23.0.0",
-    "isort>=5.12.0",
-    "flake8>=6.0.0",
-    "mypy>=1.4.0",
-    "pre-commit>=3.3.0",
 ]
-
-[project.scripts]
-protein-collector = "protein_data_collector.cli:main"
 
 [tool.black]
 line-length = 88
@@ -78,30 +58,7 @@ profile = "black"
 multi_line_output = 3
 line_length = 88
 known_first_party = ["protein_data_collector"]
-known_third_party = ["pydantic", "httpx", "tenacity", "click", "sqlalchemy", "fastapi"]
-
-[tool.mypy]
-python_version = "3.8"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
-[[tool.mypy.overrides]]
-module = [
-    "mysql.connector.*",
-    "hypothesis.*",
-    "pytest.*",
-]
-ignore_missing_imports = true
+known_third_party = ["pydantic", "requests", "tenacity"]
 
 [tool.coverage.run]
 source = ["protein_data_collector"]

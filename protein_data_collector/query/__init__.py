@@ -1,11 +1,2 @@
-"""
-Query engine for data retrieval and analysis.
-
-This package contains the query engine that provides search and filtering
-capabilities for the collected protein data.
-"""
-
-from .engine import QueryEngine, QueryFilters, QueryResult
-from .export import DataExporter, ExportFormat, ExportOptions
-
-__all__ = ['QueryEngine', 'QueryFilters', 'QueryResult', 'DataExporter', 'ExportFormat', 'ExportOptions']
+from .engine import QueryEngine
+from .export import to_fasta, to_csv, to_json, write_fasta, write_csv, write_json

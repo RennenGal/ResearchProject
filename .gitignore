@@ -155,3 +155,11 @@ scripts/temp/
 # Temporary files
 *.tmp
 *.temp
+# SQLite WAL / migration artifacts
+*.db-shm
+*.db-wal
+*.pre_migration
+db/*_v2.db
+
+# Claude Code assistant memory
+.claude/

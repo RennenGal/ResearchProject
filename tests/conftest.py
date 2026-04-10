@@ -1,147 +1,112 @@
-"""
-Pytest configuration and shared fixtures for the test suite.
-"""
+"""Shared fixtures for the test suite."""
 
+import json
 import pytest
-import tempfile
-import os
-from pathlib import Path
-from protein_data_collector.config import SystemConfig, DatabaseConfig, APIConfig, RetryConfig, RateLimitingConfig, set_config
-from protein_data_collector.database.connection import set_database_manager, DatabaseManager
+
+from protein_data_collector.models.entities import Isoform, Protein, TIMBarrelEntry
 
 
-@pytest.fixture
-def temp_config_file():
-    """Create a temporary configuration file for testing."""
-    config_data = {
-        "database": {
-            "host": "localhost",
-            "port": 3306,
-            "database": "test_protein_data",
-            "username": "test_user",
-            "password": "test_password"
-        },
-        "api": {
-            "interpro_base_url": "https://www.ebi.ac.uk/interpro/api/",
-            "uniprot_base_url": "https://rest.uniprot.org/"
-        },
-        "rate_limiting": {
-            "interpro_requests_per_second": 10.0,
-            "uniprot_requests_per_second": 5.0
-        },
-        "retry": {
-            "max_retries": 2,
-            "initial_delay": 0.1,
-            "backoff_multiplier": 1.5,
-            "max_delay": 5.0
-        },
-        "logging": {
-            "level": "DEBUG",
-            "format": "json"
+# ---------------------------------------------------------------------------
+# Minimal sample UniProt API response (structure mirrors the real API)
+# ---------------------------------------------------------------------------
+
+UNIPROT_P53_RESPONSE = {
+    "primaryAccession": "P04637",
+    "uniProtkbId": "P53_HUMAN",
+    "entryType": "UniProtKB reviewed (Swiss-Prot)",
+    "annotationScore": 5,
+    "proteinExistence": "1: Evidence at protein level",
+    "organism": {"scientificName": "Homo sapiens", "taxonId": 9606},
+    "proteinDescription": {
+        "recommendedName": {
+            "fullName": {"value": "Cellular tumor antigen p53"}
         }
-    }
-    
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        import json
-        json.dump(config_data, f)
-        temp_file = f.name
-    
-    yield temp_file
-    
-    # Cleanup
-    os.unlink(temp_file)
+    },
+    "genes": [{"geneName": {"value": "TP53"}}],
+    "reviewed": True,
+    "sequence": {
+        "value": "MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDP",
+        "length": 59,
+    },
+    "comments": [
+        {
+            "commentType": "ALTERNATIVE PRODUCTS",
+            "isoforms": [
+                {
+                    "isoformIds": ["P04637-1"],
+                    "name": {"value": "1"},
+                    "isoformSequenceStatus": "Displayed",
+                    "sequenceIds": [],
+                },
+                {
+                    "isoformIds": ["P04637-2"],
+                    "name": {"value": "2"},
+                    "isoformSequenceStatus": "Described",
+                    "sequenceIds": ["VSP_006535"],
+                },
+            ],
+        }
+    ],
+    "features": [
+        {
+            "type": "Alternative sequence",
+            "featureId": "VSP_006535",
+            "location": {
+                "start": {"value": 1, "modifier": "EXACT"},
+                "end": {"value": 10, "modifier": "EXACT"},
+            },
+            "description": "MEEPQSDPSV -> MK in isoform 2",
+        }
+    ],
+    "uniProtKBCrossReferences": [
+        {
+            "database": "Ensembl",
+            "id": "ENSG00000141510",
+            "properties": [
+                {"key": "ProteinId", "value": "ENSP00000269305"},
+                {"key": "TranscriptId", "value": "ENST00000269305"},
+            ],
+        },
+        {
+            "database": "AlphaFoldDB",
+            "id": "P04637",
+        },
+    ],
+}
 
+
+# ---------------------------------------------------------------------------
+# Model fixtures
+# ---------------------------------------------------------------------------
 
 @pytest.fixture
-def test_config():
-    """Create a test configuration instance."""
-    return SystemConfig(
-        database=DatabaseConfig(
-            host="localhost",
-            port=3306,
-            database="test_protein_data",
-            username="test_user",
-            password="test_password"
-        ),
-        api=APIConfig(
-            interpro_base_url="https://www.ebi.ac.uk/interpro/api/",
-            uniprot_base_url="https://rest.uniprot.org/"
-        ),
-        rate_limiting=RateLimitingConfig(
-            interpro_requests_per_second=10.0,
-            uniprot_requests_per_second=5.0
-        ),
-        retry=RetryConfig(
-            max_retries=2,
-            initial_delay=0.1,
-            backoff_multiplier=1.5,
-            max_delay=5.0
-        )
+def tim_barrel_entry():
+    return TIMBarrelEntry(
+        accession="PF00394",
+        entry_type="pfam",
+        name="TIM barrel",
+        tim_barrel_annotation="TIM barrel",
     )
 
 
 @pytest.fixture
-def mock_env_vars(monkeypatch):
-    """Set up mock environment variables for testing."""
-    env_vars = {
-        "DB_HOST": "test_host",
-        "DB_PORT": "3307",
-        "DB_NAME": "test_db",
-        "DB_USER": "test_user",
-        "DB_PASSWORD": "test_pass",
-        "MAX_RETRIES": "5",
-        "LOG_LEVEL": "DEBUG"
-    }
-    
-    for key, value in env_vars.items():
-        monkeypatch.setenv(key, value)
-    
-    return env_vars
-
-
-@pytest.fixture(scope="session")
-def test_data_dir():
-    """Get the test data directory path."""
-    return Path(__file__).parent / "data"
-
-
-@pytest.fixture(autouse=True)
-def setup_test_config():
-    """Automatically set up test configuration for all tests."""
-    # Create test configuration
-    test_config = SystemConfig(
-        database=DatabaseConfig(
-            host="localhost",
-            port=3306,
-            database="test_protein_data",
-            username="test_user",
-            password="test_password"
-        ),
-        api=APIConfig(
-            interpro_base_url="https://www.ebi.ac.uk/interpro/api/",
-            uniprot_base_url="https://rest.uniprot.org/"
-        ),
-        rate_limiting=RateLimitingConfig(
-            interpro_requests_per_second=10.0,
-            uniprot_requests_per_second=5.0
-        ),
-        retry=RetryConfig(
-            max_retries=2,
-            initial_delay=0.1,
-            backoff_multiplier=1.5,
-            max_delay=5.0
-        )
+def protein():
+    return Protein(
+        uniprot_id="P04637",
+        tim_barrel_accession="PF00394",
+        protein_name="Cellular tumor antigen p53",
+        gene_name="TP53",
+        organism="Homo sapiens",
+        reviewed=True,
     )
-    
-    # Set as global config
-    set_config(test_config)
-    
-    # Create and set test database manager
-    db_manager = DatabaseManager(test_config.database)
-    set_database_manager(db_manager)
-    
-    yield test_config
-    
-    # Cleanup - reset to None
-    set_config(None)
-    set_database_manager(None)
+
+
+@pytest.fixture
+def canonical_isoform():
+    return Isoform(
+        isoform_id="P04637-1",
+        uniprot_id="P04637",
+        is_canonical=True,
+        sequence="MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDP",
+        sequence_length=59,
+    )
