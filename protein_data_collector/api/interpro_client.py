@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 
@@ -11,9 +11,6 @@ from ..errors import APIError, NetworkError
 from ..retry import with_retry
 
 logger = logging.getLogger(__name__)
-
-# InterPro accessions for TIM barrel entries (used as a filter)
-TIM_BARREL_KEYWORD = "TIM barrel"
 
 
 class InterProClient:
@@ -43,11 +40,15 @@ class InterProClient:
         return [r.get("metadata", {}).get("accession") for r in results
                 if r.get("metadata", {}).get("accession")]
 
-    def get_domain_boundaries(self, uniprot_id: str) -> Optional[Dict[str, Any]]:
+    def get_domain_boundaries(
+        self, uniprot_id: str, tim_barrel_accessions: Set[str]
+    ) -> Optional[Dict[str, Any]]:
         """
         Return the first TIM barrel domain boundary for *uniprot_id* from InterPro.
 
-        Returns a dict {domain_id, start, end, length, source} or None.
+        Matches entries whose accession is in *tim_barrel_accessions* (the set
+        collected during Phase 1).  Returns a dict {domain_id, start, end,
+        length, source} or None.
         """
         data = self._get(f"protein/uniprot/{uniprot_id}")
         if not data or "results" not in data:
@@ -56,7 +57,7 @@ class InterProClient:
         for result in data["results"]:
             for entry in result.get("entries", []):
                 meta = entry.get("metadata", {})
-                if TIM_BARREL_KEYWORD.lower() in meta.get("name", "").lower():
+                if meta.get("accession") in tim_barrel_accessions:
                     for loc in entry.get("entry_protein_locations", []):
                         frags = loc.get("fragments", [])
                         if frags:

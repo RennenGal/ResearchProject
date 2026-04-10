@@ -46,6 +46,8 @@ def main() -> None:
                         help="Only collect isoforms for proteins not yet processed")
     parser.add_argument("--recollect-isoforms", action="store_true",
                         help="Delete all isoforms and re-fetch from UniProt (picks up alternatives)")
+    parser.add_argument("--backfill-domains", action="store_true",
+                        help="Fetch tim_barrel_location for canonical isoforms where it is NULL")
     parser.add_argument("--db", default=None, help="Override database path from config")
     parser.add_argument("--log-file", default=None, help="Also write logs to this file")
     parser.add_argument("--log-level", default="INFO", help="Logging level (default: INFO)")
@@ -59,17 +61,22 @@ def main() -> None:
 
     collector = DataCollector(db_path=db_path)
 
-    if args.recollect_isoforms:
+    if args.backfill_domains:
+        logger.info("Backfilling tim_barrel_location for canonical isoforms...")
+        updated = collector.backfill_domain_locations()
+        print(f"\nUpdated {updated} isoforms with domain location.")
+    elif args.recollect_isoforms:
         logger.info("Re-collecting all isoforms from UniProt (will pick up alternatives)...")
         report = collector.recollect_all_isoforms()
+        print("\n" + report.summary())
     elif args.resume:
         logger.info("Resuming isoform collection...")
         report = collector.resume_isoform_collection()
+        print("\n" + report.summary())
     else:
         logger.info("Starting full collection pipeline...")
         report = collector.run_full_collection()
-
-    print("\n" + report.summary())
+        print("\n" + report.summary())
 
 
 if __name__ == "__main__":

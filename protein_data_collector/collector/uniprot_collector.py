@@ -16,7 +16,7 @@ original 407-protein database.  Key decisions:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..api.interpro_client import InterProClient
 from ..api.uniprot_client import UniProtClient
@@ -30,9 +30,11 @@ class UniProtCollector:
         self,
         uniprot: Optional[UniProtClient] = None,
         interpro: Optional[InterProClient] = None,
+        tim_barrel_accessions: Optional[Set[str]] = None,
     ):
         self.uniprot = uniprot or UniProtClient()
         self.interpro = interpro or InterProClient()
+        self.tim_barrel_accessions: Set[str] = tim_barrel_accessions or set()
 
     # ------------------------------------------------------------------
     # Public
@@ -136,8 +138,11 @@ class UniProtCollector:
         return isoforms
 
     def _get_tim_barrel_location(self, uniprot_id: str) -> Optional[Dict[str, Any]]:
+        if not self.tim_barrel_accessions:
+            logger.debug("tim_barrel_accessions not set — skipping domain lookup for %s", uniprot_id)
+            return None
         try:
-            return self.interpro.get_domain_boundaries(uniprot_id)
+            return self.interpro.get_domain_boundaries(uniprot_id, self.tim_barrel_accessions)
         except Exception as e:
             logger.warning("Could not get TIM barrel location for %s: %s", uniprot_id, e)
             return None
