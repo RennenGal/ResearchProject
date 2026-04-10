@@ -35,8 +35,9 @@ class InterProClient:
 
     def get_human_proteins_for_entry(self, accession: str) -> List[str]:
         """Return UniProt IDs of human proteins belonging to *accession*."""
-        endpoint = f"protein/uniprot/entry/interpro/{accession}/"
-        results = self._paginate(endpoint, params={"taxonomy_id": "9606"})
+        db = "pfam" if accession.startswith("PF") else "interpro"
+        endpoint = f"protein/uniprot/taxonomy/uniprot/9606/entry/{db}/{accession}/"
+        results = self._paginate(endpoint)
         return [r.get("metadata", {}).get("accession") for r in results
                 if r.get("metadata", {}).get("accession")]
 
