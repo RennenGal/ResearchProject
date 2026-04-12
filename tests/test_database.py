@@ -53,16 +53,32 @@ def protein():
     )
 
 
+_SEQ300 = "ACDEFGHIKLMNPQRSTVWY" * 15  # 300 aa — above fragment threshold
+
+
 @pytest.fixture
 def isoform():
     return Isoform(
         isoform_id="P04637-1",
         uniprot_id="P04637",
         is_canonical=True,
-        sequence="ACDEFGHIKLMNPQRSTVWY",
-        sequence_length=20,
-        tim_barrel_location={"start": 1, "end": 18, "source": "interpro_api"},
+        sequence=_SEQ300,
+        sequence_length=300,
+        tim_barrel_location={"domain_id": "PF00394", "start": 50, "end": 280,
+                             "length": 231, "source": "interpro_api"},
         ensembl_gene_id="ENSG00000141510",
+    )
+
+
+@pytest.fixture
+def fragment_isoform():
+    short_seq = "ACDEFGHIKLMNPQRSTVWY" * 5  # 100 aa — below fragment threshold
+    return Isoform(
+        isoform_id="P04637-2",
+        uniprot_id="P04637",
+        is_canonical=False,
+        sequence=short_seq,
+        sequence_length=100,
     )
 
 
@@ -130,8 +146,26 @@ class TestIsoforms:
             rows = get_isoforms_for_protein(conn, "P04637")
         import json
         loc = json.loads(rows[0]["tim_barrel_location"])
-        assert loc["start"] == 1
+        assert loc["start"] == 50
         assert loc["source"] == "interpro_api"
+
+    def test_tim_barrel_sequence_stored(self, db, entry, protein, isoform):
+        self._seed(db, entry, protein)
+        with get_connection(db) as conn:
+            upsert_isoform(conn, isoform)
+            conn.commit()
+            rows = get_isoforms_for_protein(conn, "P04637")
+        assert rows[0]["tim_barrel_sequence"] == _SEQ300[49:280]
+        assert rows[0]["is_fragment"] == 0
+
+    def test_fragment_flagged(self, db, entry, protein, fragment_isoform):
+        self._seed(db, entry, protein)
+        with get_connection(db) as conn:
+            upsert_isoform(conn, fragment_isoform)
+            conn.commit()
+            rows = get_isoforms_for_protein(conn, "P04637")
+        assert rows[0]["is_fragment"] == 1
+        assert rows[0]["tim_barrel_sequence"] is None
 
     def test_proteins_without_isoforms(self, db, entry, protein):
         self._seed(db, entry, protein)

@@ -33,10 +33,12 @@ CREATE TABLE IF NOT EXISTS isoforms (
     is_canonical         INTEGER NOT NULL DEFAULT 0,
     sequence             TEXT NOT NULL,
     sequence_length      INTEGER NOT NULL,
+    is_fragment          INTEGER NOT NULL DEFAULT 0,  -- 1 if sequence_length < 200 (cannot contain full TIM barrel)
     exon_count           INTEGER,
     exon_annotations     TEXT,   -- JSON: [{start, end}, ...] in protein coordinates
     splice_variants      TEXT,   -- JSON: UniProt Alternative-sequence features for this isoform
-    tim_barrel_location  TEXT,   -- JSON: {start, end, source}
+    tim_barrel_location  TEXT,   -- JSON: {domain_id, start, end, length, source}
+    tim_barrel_sequence  TEXT,   -- subsequence sequence[start-1:end] from tim_barrel_location; NULL if no location or is_fragment
     ensembl_gene_id      TEXT,
     alphafold_id         TEXT,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,

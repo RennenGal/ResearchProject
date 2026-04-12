@@ -46,16 +46,23 @@ class Protein(BaseModel):
     created_at: Optional[datetime] = None
 
 
+# Minimum length to contain a full TIM barrel domain (~250 residues typical).
+# Sequences below this threshold are UniProt fragments, not full-length proteins.
+_FRAGMENT_LENGTH_THRESHOLD = 200
+
+
 class Isoform(BaseModel):
     isoform_id: str                          # e.g. P04637-1
     uniprot_id: str
     is_canonical: bool = False
     sequence: str
     sequence_length: int
+    is_fragment: bool = False                # True if sequence_length < _FRAGMENT_LENGTH_THRESHOLD
     exon_count: Optional[int] = None
     exon_annotations: Optional[List[Dict[str, Any]]] = None   # [{start, end}, ...]
     splice_variants: Optional[List[Dict[str, Any]]] = None    # UniProt Alternative-sequence features
-    tim_barrel_location: Optional[Dict[str, Any]] = None      # {start, end, source}
+    tim_barrel_location: Optional[Dict[str, Any]] = None      # {domain_id, start, end, length, source}
+    tim_barrel_sequence: Optional[str] = None                 # sequence[start-1:end]; None for fragments or missing location
     ensembl_gene_id: Optional[str] = None
     alphafold_id: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -88,4 +95,19 @@ class Isoform(BaseModel):
                     raise ValueError(
                         f"TIM barrel end {end} exceeds sequence length {self.sequence_length}"
                     )
+        return self
+
+    @model_validator(mode="after")
+    def compute_derived_fields(self) -> "Isoform":
+        # is_fragment: sequence too short to contain a full TIM barrel domain
+        if not self.is_fragment:
+            self.is_fragment = self.sequence_length < _FRAGMENT_LENGTH_THRESHOLD
+
+        # tim_barrel_sequence: slice from location if available and not a fragment
+        if self.tim_barrel_sequence is None and self.tim_barrel_location and not self.is_fragment:
+            start = self.tim_barrel_location.get("start")
+            end = self.tim_barrel_location.get("end")
+            if start and end and self.sequence:
+                self.tim_barrel_sequence = self.sequence[start - 1:end]
+
         return self

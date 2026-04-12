@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from protein_data_collector.models.entities import Isoform, Protein, TIMBarrelEntry
+from protein_data_collector.models.entities import Isoform, Protein, TIMBarrelEntry, _FRAGMENT_LENGTH_THRESHOLD
 
 
 class TestTIMBarrelEntry:
@@ -77,3 +77,37 @@ class TestIsoform:
         assert iso.splice_variants is None
         assert iso.tim_barrel_location is None
         assert iso.ensembl_gene_id is None
+
+    def test_is_fragment_auto_set_for_short_sequence(self):
+        short_seq = "ACDEFGHIKL" * 5   # 50 aa — below threshold
+        iso = Isoform(isoform_id="P00001-1", uniprot_id="P00001",
+                      sequence=short_seq, sequence_length=50)
+        assert iso.is_fragment is True
+
+    def test_is_fragment_false_for_full_length(self):
+        # _BASE sequence is 20 aa (a test value), so set explicitly above threshold
+        long_seq = "ACDEFGHIKLMNPQRSTVWY" * 15  # 300 aa
+        iso = Isoform(isoform_id="P00001-1", uniprot_id="P00001",
+                      sequence=long_seq, sequence_length=300)
+        assert iso.is_fragment is False
+
+    def test_tim_barrel_sequence_auto_sliced(self):
+        long_seq = "ACDEFGHIKLMNPQRSTVWY" * 15  # 300 aa
+        loc = {"domain_id": "IPR000001", "start": 11, "end": 30, "length": 20, "source": "interpro_api"}
+        iso = Isoform(isoform_id="P00001-1", uniprot_id="P00001",
+                      sequence=long_seq, sequence_length=300,
+                      tim_barrel_location=loc)
+        assert iso.tim_barrel_sequence == long_seq[10:30]
+        assert len(iso.tim_barrel_sequence) == 20
+
+    def test_tim_barrel_sequence_none_for_fragment(self):
+        short_seq = "ACDEFGHIKL" * 5  # 50 aa
+        loc = {"domain_id": "IPR000001", "start": 1, "end": 50, "length": 50, "source": "interpro_api"}
+        iso = Isoform(isoform_id="P00001-1", uniprot_id="P00001",
+                      sequence=short_seq, sequence_length=50,
+                      tim_barrel_location=loc)
+        assert iso.is_fragment is True
+        assert iso.tim_barrel_sequence is None
+
+    def test_fragment_threshold_value(self):
+        assert _FRAGMENT_LENGTH_THRESHOLD == 200

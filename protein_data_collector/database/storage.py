@@ -82,9 +82,9 @@ def upsert_isoform(conn: sqlite3.Connection, isoform: Isoform) -> None:
         """
         INSERT OR REPLACE INTO isoforms
             (isoform_id, uniprot_id, is_canonical, sequence, sequence_length,
-             exon_count, exon_annotations, splice_variants,
-             tim_barrel_location, ensembl_gene_id, alphafold_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             is_fragment, exon_count, exon_annotations, splice_variants,
+             tim_barrel_location, tim_barrel_sequence, ensembl_gene_id, alphafold_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             isoform.isoform_id,
@@ -92,10 +92,12 @@ def upsert_isoform(conn: sqlite3.Connection, isoform: Isoform) -> None:
             int(isoform.is_canonical),
             isoform.sequence,
             isoform.sequence_length,
+            int(isoform.is_fragment),
             isoform.exon_count,
             json.dumps(isoform.exon_annotations) if isoform.exon_annotations is not None else None,
             json.dumps(isoform.splice_variants) if isoform.splice_variants is not None else None,
             json.dumps(isoform.tim_barrel_location) if isoform.tim_barrel_location is not None else None,
+            isoform.tim_barrel_sequence,
             isoform.ensembl_gene_id,
             isoform.alphafold_id,
         ),
