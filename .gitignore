@@ -163,3 +163,9 @@ db/*_v2.db
 
 # Claude Code assistant memory
 .claude/
+
+# Runtime logs directory
+logs/
+
+# Kiro IDE specs
+.kiro/
