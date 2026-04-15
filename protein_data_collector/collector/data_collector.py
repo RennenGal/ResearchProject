@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from ..database.connection import ensure_db, get_connection
 from ..database.storage import (
+    deduplicate_proteins,
     get_all_proteins,
     get_proteins_without_isoforms,
     get_counts,
@@ -73,6 +74,7 @@ class DataCollector:
         report.tim_barrel_entries = len(entries)
 
         proteins = self._phase2_human_proteins(entries)
+        proteins = self._phase2b_deduplicate(proteins)
         report.proteins_collected = len(proteins)
 
         isoforms = self._phase3_isoforms(proteins, report)
@@ -90,7 +92,10 @@ class DataCollector:
             logger.info("Cleared isoforms table; re-collecting from UniProt")
             proteins_raw = get_all_proteins(conn)
 
-        proteins = [Protein(**p) for p in proteins_raw]
+        proteins = [
+            Protein(**p) for p in proteins_raw
+            if p.get("canonical_uniprot_id") is None
+        ]
         report = CollectionReport()
         isoforms = self._phase3_isoforms(proteins, report)
         report.isoforms_collected = len(isoforms)
@@ -175,6 +180,22 @@ class DataCollector:
         with get_connection(self.db_path) as conn:
             upsert_proteins(conn, proteins)
         return proteins
+
+    def _phase2b_deduplicate(self, proteins: List[Protein]) -> List[Protein]:
+        """Mark redundant proteins in the DB and return only the canonical representatives."""
+        with get_connection(self.db_path) as conn:
+            n_redundant = deduplicate_proteins(conn)
+            redundant_ids = {
+                row[0] for row in conn.execute(
+                    "SELECT uniprot_id FROM proteins WHERE canonical_uniprot_id IS NOT NULL"
+                ).fetchall()
+            }
+        canonical = [p for p in proteins if p.uniprot_id not in redundant_ids]
+        logger.info(
+            "Phase 2b: deduplication — %d redundant proteins marked; %d canonical proteins proceed to phase 3",
+            n_redundant, len(canonical),
+        )
+        return canonical
 
     def _phase3_isoforms(
         self, proteins: List[Protein], report: CollectionReport

@@ -43,6 +43,7 @@ class Protein(BaseModel):
     reviewed: Optional[bool] = None
     protein_existence: Optional[str] = None
     annotation_score: Optional[int] = None
+    canonical_uniprot_id: Optional[str] = None  # None = canonical; set = redundant entry pointing to its canonical
     created_at: Optional[datetime] = None
 
 

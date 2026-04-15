@@ -45,12 +45,12 @@ def upsert_protein(conn: sqlite3.Connection, protein: Protein) -> None:
         """
         INSERT OR REPLACE INTO proteins
             (uniprot_id, tim_barrel_accession, protein_name, gene_name,
-             organism, reviewed, protein_existence, annotation_score)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             organism, reviewed, protein_existence, annotation_score, canonical_uniprot_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (protein.uniprot_id, protein.tim_barrel_accession, protein.protein_name,
          protein.gene_name, protein.organism, int(protein.reviewed) if protein.reviewed is not None else None,
-         protein.protein_existence, protein.annotation_score),
+         protein.protein_existence, protein.annotation_score, protein.canonical_uniprot_id),
     )
 
 
@@ -60,17 +60,64 @@ def get_all_proteins(conn: sqlite3.Connection) -> List[dict]:
 
 
 def get_proteins_without_isoforms(conn: sqlite3.Connection) -> List[str]:
-    """Return uniprot_ids that have no rows in the isoforms table."""
+    """Return uniprot_ids of canonical proteins that have no rows in the isoforms table."""
     rows = conn.execute(
         """
         SELECT p.uniprot_id
         FROM proteins p
         LEFT JOIN isoforms i ON p.uniprot_id = i.uniprot_id
-        WHERE i.uniprot_id IS NULL
+        WHERE p.canonical_uniprot_id IS NULL
+          AND i.uniprot_id IS NULL
         ORDER BY p.uniprot_id
         """
     ).fetchall()
     return [r[0] for r in rows]
+
+
+def deduplicate_proteins(conn: sqlite3.Connection) -> int:
+    """
+    Group proteins by (protein_name, organism) and mark redundant entries by setting
+    canonical_uniprot_id to point to the best representative in each group.
+
+    Ranking within a group: reviewed DESC, alt-spliced isoform count DESC,
+    total isoform count DESC, annotation_score DESC, uniprot_id ASC (deterministic).
+
+    Returns the number of proteins newly marked as redundant.
+    """
+    conn.execute("""
+        UPDATE proteins
+        SET canonical_uniprot_id = (
+            SELECT best.uniprot_id
+            FROM (
+                SELECT
+                    p2.uniprot_id,
+                    COALESCE(p2.protein_name, p2.uniprot_id) AS group_name,
+                    p2.organism,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(p2.protein_name, p2.uniprot_id), p2.organism
+                        ORDER BY
+                            p2.reviewed                                                    DESC,
+                            SUM(CASE WHEN i2.is_canonical = 0 THEN 1 ELSE 0 END)          DESC,
+                            COUNT(i2.isoform_id)                                           DESC,
+                            p2.annotation_score                                            DESC,
+                            p2.uniprot_id                                                  ASC
+                    ) AS rn
+                FROM proteins p2
+                LEFT JOIN isoforms i2 ON p2.uniprot_id = i2.uniprot_id
+                GROUP BY p2.uniprot_id
+            ) best
+            WHERE best.group_name = COALESCE(proteins.protein_name, proteins.uniprot_id)
+              AND best.organism   = proteins.organism
+              AND best.rn         = 1
+              AND best.uniprot_id != proteins.uniprot_id
+        )
+        WHERE canonical_uniprot_id IS NULL
+    """)
+    changed = conn.execute(
+        "SELECT COUNT(*) FROM proteins WHERE canonical_uniprot_id IS NOT NULL"
+    ).fetchone()[0]
+    conn.commit()
+    return changed
 
 
 # ---------------------------------------------------------------------------
