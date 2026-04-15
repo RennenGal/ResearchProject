@@ -76,6 +76,40 @@ CREATE INDEX IF NOT EXISTS idx_isoforms_uniprot         ON isoforms(uniprot_id);
 CREATE INDEX IF NOT EXISTS idx_isoforms_canonical       ON isoforms(uniprot_id, is_canonical);
 CREATE INDEX IF NOT EXISTS idx_isoforms_length          ON isoforms(sequence_length);
 
+-- Analysis table: alternative isoforms where the TIM barrel is partially affected by AS.
+-- Populated by scripts/build_tim_barrel_isoforms.py via sliding-window ungapped alignment
+-- of the canonical TIM barrel sequence against each alternative isoform.
+-- Included:  12.5% <= identity < 95%   (at least one beta-alpha motif present, meaningful AS effect)
+-- Excluded:  identity >= 95%  (TIM barrel effectively unchanged by AS)
+-- Excluded:  identity < 12.5%  (< 1 beta-alpha motif, effectively gone)
+CREATE TABLE IF NOT EXISTS tim_barrel_isoforms (
+    isoform_id                     TEXT PRIMARY KEY,
+    uniprot_id                     TEXT NOT NULL,
+    is_canonical                   INTEGER NOT NULL DEFAULT 0,
+    sequence                       TEXT NOT NULL,
+    sequence_length                INTEGER NOT NULL,
+    is_fragment                    INTEGER NOT NULL DEFAULT 0,
+    exon_count                     INTEGER,
+    exon_annotations               TEXT,   -- JSON
+    splice_variants                TEXT,   -- JSON
+    -- Alignment-derived TIM barrel position in this isoform
+    tim_barrel_location            TEXT,   -- JSON: {start, end, length, source:"local_alignment"}
+    tim_barrel_sequence            TEXT,   -- isoform[start-1:end] at alignment position
+    -- Canonical reference used for alignment
+    canonical_tim_barrel_location  TEXT,   -- JSON: original canonical location
+    canonical_tim_barrel_sequence  TEXT,   -- canonical TIM barrel sequence (the query)
+    -- Alignment results
+    identity_percentage            REAL NOT NULL,  -- alignment_score / tim_barrel_length * 100
+    alignment_score                INTEGER NOT NULL,
+    ensembl_gene_id                TEXT,
+    alphafold_id                   TEXT,
+    created_at                     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (uniprot_id) REFERENCES proteins(uniprot_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tb_isoforms_uniprot     ON tim_barrel_isoforms(uniprot_id);
+CREATE INDEX IF NOT EXISTS idx_tb_isoforms_identity    ON tim_barrel_isoforms(identity_percentage);
+
 -- Guard: reject any isoform insert whose protein has been marked redundant.
 CREATE TRIGGER IF NOT EXISTS trg_block_redundant_isoform
 BEFORE INSERT ON isoforms
