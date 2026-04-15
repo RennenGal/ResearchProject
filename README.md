@@ -13,13 +13,17 @@ Collects protein families, human proteins, and isoforms from InterPro and UniPro
 | | Count |
 |---|---|
 | TIM barrel families (18 PFAM + 34 InterPro) | 52 |
-| Human proteins | 572 |
-| Isoforms — canonical | 572 |
-| Isoforms — alternative | 131 |
-| **Isoforms — total** | **703** |
-| Fragments (sequence < 200 aa) | 185 |
-| With `tim_barrel_location` | 572 (all canonical) |
-| With `tim_barrel_sequence` | 404 (non-fragment canonical) |
+| Unique canonical proteins | 334 |
+| Isoforms — canonical | 334 |
+| Isoforms — alternative (non-fragment) | 114 |
+| Isoforms — fragments (sequence < 200 aa) | 116 |
+| **Isoforms — total** | **465** |
+| Proteins with at least one alternative isoform | 57 |
+
+Proteins are deduplicated by `(protein_name, organism)` group: entries that share a name
+and organism with a better-annotated representative are marked redundant via
+`proteins.canonical_uniprot_id`. The `isoforms` table contains only isoforms of canonical
+proteins; the full pre-deduplication set (703 rows) is archived in `isoforms_with_duplicates`.
 
 Families were identified by name-based search (`TIM barrel`, `TIM-barrel`) combined with
 structural database cross-checking (CATH 3.20.20 superfamily) to avoid missing entries
@@ -37,9 +41,11 @@ tim_barrel_entries
 
 proteins
   uniprot_id (PK), tim_barrel_accession (FK), protein_name, gene_name,
-  organism, reviewed, protein_existence, annotation_score
+  organism, reviewed, protein_existence, annotation_score,
+  canonical_uniprot_id  -- NULL = canonical representative;
+                        -- non-NULL = redundant entry, points to its canonical
 
-isoforms
+isoforms                            -- clean table: canonical proteins only
   isoform_id (PK), uniprot_id (FK), is_canonical,
   sequence, sequence_length,
   is_fragment,          -- 1 if sequence_length < 200 (UniProt fragment entry, not a full protein)
@@ -52,7 +58,14 @@ isoforms
   tim_barrel_sequence,  -- subsequence sequence[start-1:end] from tim_barrel_location
                         --   null for fragments and alternative isoforms
   ensembl_gene_id, alphafold_id
+
+isoforms_with_duplicates            -- archive: all 703 originally collected rows
+  (same columns, no FK constraint)
 ```
+
+A DB trigger (`trg_block_redundant_isoform`) prevents inserting isoforms for redundant
+proteins. During collection, phase 2b runs `deduplicate_proteins()` after proteins are
+fetched and before isoforms are collected, so redundant entries are never queried.
 
 ---
 
