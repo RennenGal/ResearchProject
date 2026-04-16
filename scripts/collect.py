@@ -4,8 +4,11 @@ Run the protein data collection pipeline.
 
 Usage
 -----
-Full collection from scratch:
+Full collection from scratch (TIM barrel, human):
     python scripts/collect.py
+
+Collect beta propeller data for mouse:
+    python scripts/collect.py --domain beta_propeller --organism mus_musculus
 
 Resume isoform collection for proteins not yet processed:
     python scripts/collect.py --resume
@@ -25,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.collector.data_collector import DataCollector
-from protein_data_collector.config import get_config
+from protein_data_collector.config import get_config, DOMAINS, ORGANISMS
 
 
 def setup_logging(log_file: str = None, level: str = "INFO") -> None:
@@ -41,13 +44,19 @@ def setup_logging(log_file: str = None, level: str = "INFO") -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Collect TIM barrel protein data")
+    parser = argparse.ArgumentParser(description="Collect domain protein data")
+    parser.add_argument("--domain", default="tim_barrel",
+                        choices=list(DOMAINS),
+                        help="Domain to collect data for (default: tim_barrel)")
+    parser.add_argument("--organism", default="homo_sapiens",
+                        choices=list(ORGANISMS),
+                        help="Organism to collect data for (default: homo_sapiens)")
     parser.add_argument("--resume", action="store_true",
                         help="Only collect isoforms for proteins not yet processed")
     parser.add_argument("--recollect-isoforms", action="store_true",
-                        help="Delete all isoforms and re-fetch from UniProt (picks up alternatives)")
+                        help="Delete all isoforms and re-fetch from UniProt")
     parser.add_argument("--backfill-domains", action="store_true",
-                        help="Fetch tim_barrel_location for canonical isoforms where it is NULL")
+                        help="Fetch domain location for canonical isoforms where it is NULL")
     parser.add_argument("--db", default=None, help="Override database path from config")
     parser.add_argument("--log-file", default=None, help="Also write logs to this file")
     parser.add_argument("--log-level", default="INFO", help="Logging level (default: INFO)")
@@ -57,16 +66,18 @@ def main() -> None:
     logger = logging.getLogger(__name__)
 
     db_path = args.db or get_config().db_path
-    logger.info("Database: %s", db_path)
+    logger.info("Database : %s", db_path)
+    logger.info("Domain   : %s", args.domain)
+    logger.info("Organism : %s", args.organism)
 
-    collector = DataCollector(db_path=db_path)
+    collector = DataCollector(db_path=db_path, domain=args.domain, organism=args.organism)
 
     if args.backfill_domains:
-        logger.info("Backfilling tim_barrel_location for canonical isoforms...")
+        logger.info("Backfilling domain locations for canonical isoforms...")
         updated = collector.backfill_domain_locations()
         print(f"\nUpdated {updated} isoforms with domain location.")
     elif args.recollect_isoforms:
-        logger.info("Re-collecting all isoforms from UniProt (will pick up alternatives)...")
+        logger.info("Re-collecting all isoforms from UniProt...")
         report = collector.recollect_all_isoforms()
         print("\n" + report.summary())
     elif args.resume:

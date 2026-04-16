@@ -6,7 +6,7 @@ import pytest
 from protein_data_collector.database.connection import get_connection
 from protein_data_collector.database.schema import init_db
 from protein_data_collector.database.storage import (
-    upsert_isoform, upsert_protein, upsert_tim_barrel_entry,
+    upsert_domain_entry, upsert_isoform, upsert_protein,
 )
 from protein_data_collector.models.entities import Isoform, Protein, TIMBarrelEntry
 from protein_data_collector.query.engine import QueryEngine
@@ -46,7 +46,7 @@ def seeded_db(db):
                           "description": "WY -> deleted in isoform 2"}],
     )
     with get_connection(db) as conn:
-        upsert_tim_barrel_entry(conn, entry)
+        upsert_domain_entry(conn, entry)
         conn.commit()
         upsert_protein(conn, protein)
         conn.commit()

@@ -143,10 +143,10 @@ class AlignmentResult:
     ensembl_gene_id: Optional[str]
     alphafold_id: Optional[str]
     # Alignment-derived
-    tim_barrel_location: str            # JSON — span in this isoform
-    tim_barrel_sequence: str            # isoform subsequence at span
-    canonical_tim_barrel_location: str  # JSON — original canonical location
-    canonical_tim_barrel_sequence: str  # canonical TIM barrel used as query
+    domain_location: str            # JSON — span in this isoform
+    domain_sequence: str            # isoform subsequence at span
+    canonical_domain_location: str  # JSON — original canonical location
+    canonical_domain_sequence: str  # canonical domain sequence used as query
     identity_percentage: float
     alignment_score: int
 
@@ -155,18 +155,20 @@ class AlignmentResult:
 # Main analysis
 # ---------------------------------------------------------------------------
 
-def build_tim_barrel_isoforms(conn: sqlite3.Connection) -> tuple[list, int, int, int]:
+def build_tim_barrel_isoforms(
+    conn: sqlite3.Connection,
+    isoform_table: str = "tb_isoforms",
+) -> tuple[list, int, int, int]:
     """
     Run the alignment analysis and return
     (results, skipped_identical, skipped_absent, insertions_detected).
 
-    Queries the clean ``isoforms`` table for all alternative, non-fragment
-    isoforms whose protein has a canonical isoform with a known
-    tim_barrel_sequence.
+    Queries ``isoform_table`` for all alternative, non-fragment isoforms
+    whose protein has a canonical isoform with a known tim_barrel_sequence.
     """
     conn.row_factory = sqlite3.Row
 
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT
             alt.isoform_id,
             alt.uniprot_id,
@@ -181,8 +183,8 @@ def build_tim_barrel_isoforms(conn: sqlite3.Connection) -> tuple[list, int, int,
             can.sequence              AS canonical_sequence,
             can.tim_barrel_sequence   AS canonical_tb_seq,
             can.tim_barrel_location   AS canonical_tb_loc
-        FROM isoforms alt
-        JOIN isoforms can
+        FROM {isoform_table} alt
+        JOIN {isoform_table} can
           ON  can.uniprot_id   = alt.uniprot_id
           AND can.is_canonical = 1
         WHERE alt.is_canonical = 0
@@ -264,10 +266,10 @@ def build_tim_barrel_isoforms(conn: sqlite3.Connection) -> tuple[list, int, int,
             splice_variants=row["splice_variants"],
             ensembl_gene_id=row["ensembl_gene_id"],
             alphafold_id=row["alphafold_id"],
-            tim_barrel_location=tb_location,
-            tim_barrel_sequence=tb_subsequence,
-            canonical_tim_barrel_location=row["canonical_tb_loc"],
-            canonical_tim_barrel_sequence=tb_seq,
+            domain_location=tb_location,
+            domain_sequence=tb_subsequence,
+            canonical_domain_location=row["canonical_tb_loc"],
+            canonical_domain_sequence=tb_seq,
             identity_percentage=round(identity * 100, 2),
             alignment_score=score,
         ))
@@ -280,28 +282,34 @@ def build_tim_barrel_isoforms(conn: sqlite3.Connection) -> tuple[list, int, int,
     return results, skipped_identical, skipped_absent, insertions_detected
 
 
-def populate_tim_barrel_isoforms(conn: sqlite3.Connection) -> tuple[int, int, int, int]:
+def populate_tim_barrel_isoforms(
+    conn: sqlite3.Connection,
+    isoform_table: str = "tb_isoforms",
+    output_table: str = "tb_affected_isoforms",
+) -> tuple[int, int, int, int]:
     """
-    Rebuild the tim_barrel_isoforms table from scratch and return
+    Rebuild ``output_table`` from scratch and return
     (inserted, skipped_identical, skipped_absent, insertions_detected).
     """
-    conn.execute("DELETE FROM tim_barrel_isoforms")
+    conn.execute(f"DELETE FROM {output_table}")
 
-    results, skipped_identical, skipped_absent, insertions_detected = build_tim_barrel_isoforms(conn)
+    results, skipped_identical, skipped_absent, insertions_detected = build_tim_barrel_isoforms(
+        conn, isoform_table=isoform_table
+    )
 
-    conn.executemany("""
-        INSERT OR REPLACE INTO tim_barrel_isoforms (
+    conn.executemany(f"""
+        INSERT OR REPLACE INTO {output_table} (
             isoform_id, uniprot_id, is_canonical, sequence, sequence_length,
             is_fragment, exon_count, exon_annotations, splice_variants,
-            tim_barrel_location, tim_barrel_sequence,
-            canonical_tim_barrel_location, canonical_tim_barrel_sequence,
+            domain_location, domain_sequence,
+            canonical_domain_location, canonical_domain_sequence,
             identity_percentage, alignment_score,
             ensembl_gene_id, alphafold_id
         ) VALUES (
             :isoform_id, :uniprot_id, 0, :sequence, :sequence_length,
             :is_fragment, :exon_count, :exon_annotations, :splice_variants,
-            :tim_barrel_location, :tim_barrel_sequence,
-            :canonical_tim_barrel_location, :canonical_tim_barrel_sequence,
+            :domain_location, :domain_sequence,
+            :canonical_domain_location, :canonical_domain_sequence,
             :identity_percentage, :alignment_score,
             :ensembl_gene_id, :alphafold_id
         )

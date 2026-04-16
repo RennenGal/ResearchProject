@@ -5,21 +5,21 @@ import pytest
 from protein_data_collector.database.connection import get_connection
 from protein_data_collector.database.schema import init_db
 from protein_data_collector.database.storage import (
+    get_all_domain_entries,
     get_all_proteins,
-    get_all_tim_barrel_entries,
     get_counts,
     get_isoforms_for_protein,
     get_proteins_without_isoforms,
+    upsert_domain_entry,
     upsert_isoform,
     upsert_protein,
-    upsert_tim_barrel_entry,
 )
 from protein_data_collector.models.entities import Isoform, Protein, TIMBarrelEntry
 
 
 @pytest.fixture
 def db(tmp_path):
-    """In-memory-style SQLite database initialised with the new schema."""
+    """SQLite database initialised with the full schema."""
     import sqlite3
     path = str(tmp_path / "test.db")
     conn = sqlite3.connect(path)
@@ -82,28 +82,28 @@ def fragment_isoform():
     )
 
 
-class TestTIMBarrelEntries:
+class TestDomainEntries:
     def test_insert_and_retrieve(self, db, entry):
         with get_connection(db) as conn:
-            upsert_tim_barrel_entry(conn, entry)
+            upsert_domain_entry(conn, entry)
             conn.commit()
-            rows = get_all_tim_barrel_entries(conn)
+            rows = get_all_domain_entries(conn)
         assert len(rows) == 1
         assert rows[0]["accession"] == "PF00394"
         assert rows[0]["entry_type"] == "pfam"
 
     def test_upsert_is_idempotent(self, db, entry):
         with get_connection(db) as conn:
-            upsert_tim_barrel_entry(conn, entry)
-            upsert_tim_barrel_entry(conn, entry)
+            upsert_domain_entry(conn, entry)
+            upsert_domain_entry(conn, entry)
             conn.commit()
-            assert len(get_all_tim_barrel_entries(conn)) == 1
+            assert len(get_all_domain_entries(conn)) == 1
 
 
 class TestProteins:
     def test_insert_and_retrieve(self, db, entry, protein):
         with get_connection(db) as conn:
-            upsert_tim_barrel_entry(conn, entry)
+            upsert_domain_entry(conn, entry)
             conn.commit()
             upsert_protein(conn, protein)
             conn.commit()
@@ -123,7 +123,7 @@ class TestProteins:
 class TestIsoforms:
     def _seed(self, db, entry, protein):
         with get_connection(db) as conn:
-            upsert_tim_barrel_entry(conn, entry)
+            upsert_domain_entry(conn, entry)
             conn.commit()
             upsert_protein(conn, protein)
             conn.commit()
@@ -185,14 +185,14 @@ class TestIsoforms:
 class TestCounts:
     def test_counts(self, db, entry, protein, isoform):
         with get_connection(db) as conn:
-            upsert_tim_barrel_entry(conn, entry)
+            upsert_domain_entry(conn, entry)
             conn.commit()
             upsert_protein(conn, protein)
             conn.commit()
             upsert_isoform(conn, isoform)
             conn.commit()
             counts = get_counts(conn)
-        assert counts["tim_barrel_entries"] == 1
-        assert counts["proteins"] == 1
-        assert counts["isoforms"] == 1
+        assert counts["tb_entries"] == 1
+        assert counts["tb_proteins"] == 1
+        assert counts["tb_isoforms"] == 1
         assert counts["alternative_isoforms"] == 0

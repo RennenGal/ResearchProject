@@ -25,21 +25,38 @@ class InterProClient:
     # Public API
     # ------------------------------------------------------------------
 
-    def get_tim_barrel_pfam_entries(self) -> List[Dict[str, Any]]:
-        """Return all PFAM entries annotated as TIM barrel."""
-        return self._paginate("entry/pfam/", params={"annotation": "TIM barrel"})
+    def get_domain_pfam_entries(self, annotation: str) -> List[Dict[str, Any]]:
+        """Return all PFAM entries matching *annotation* (e.g. 'TIM barrel')."""
+        return self._paginate("entry/pfam/", params={"annotation": annotation})
 
-    def get_tim_barrel_interpro_entries(self) -> List[Dict[str, Any]]:
-        """Return all InterPro entries annotated as TIM barrel."""
-        return self._paginate("entry/interpro/", params={"annotation": "TIM barrel"})
+    def get_domain_interpro_entries(self, annotation: str) -> List[Dict[str, Any]]:
+        """Return all InterPro entries matching *annotation*."""
+        return self._paginate("entry/interpro/", params={"annotation": annotation})
 
-    def get_human_proteins_for_entry(self, accession: str) -> List[str]:
-        """Return UniProt IDs of human proteins belonging to *accession*."""
+    def search_pfam_entries(self, search: str) -> List[Dict[str, Any]]:
+        """Return all PFAM entries whose name/description contains *search*."""
+        return self._paginate("entry/pfam/", params={"search": search})
+
+    def search_interpro_entries(self, search: str) -> List[Dict[str, Any]]:
+        """Return all InterPro entries whose name/description contains *search*."""
+        return self._paginate("entry/interpro/", params={"search": search})
+
+    def get_entry(self, accession: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single entry by accession (pfam or interpro)."""
         db = "pfam" if accession.startswith("PF") else "interpro"
-        endpoint = f"protein/uniprot/taxonomy/uniprot/9606/entry/{db}/{accession}/"
+        return self._get(f"entry/{db}/{accession}")
+
+    def get_proteins_for_entry(self, accession: str, taxon_id: int) -> List[str]:
+        """Return UniProt IDs of proteins for *taxon_id* belonging to *accession*."""
+        db = "pfam" if accession.startswith("PF") else "interpro"
+        endpoint = f"protein/uniprot/taxonomy/uniprot/{taxon_id}/entry/{db}/{accession}/"
         results = self._paginate(endpoint)
         return [r.get("metadata", {}).get("accession") for r in results
                 if r.get("metadata", {}).get("accession")]
+
+    def get_human_proteins_for_entry(self, accession: str) -> List[str]:
+        """Return UniProt IDs of human (taxon 9606) proteins for *accession*."""
+        return self.get_proteins_for_entry(accession, taxon_id=9606)
 
     def get_domain_boundaries(
         self, uniprot_id: str, tim_barrel_accession: str

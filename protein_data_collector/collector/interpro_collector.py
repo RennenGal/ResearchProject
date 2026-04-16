@@ -1,4 +1,4 @@
-"""Collect TIM barrel families and their human proteins from InterPro."""
+"""Collect domain family entries and their proteins from InterPro."""
 
 import logging
 from typing import List, Optional
@@ -14,43 +14,78 @@ class InterProCollector:
         self.client = client or InterProClient()
 
     # ------------------------------------------------------------------
-    # TIM barrel entries (Phase 1)
+    # Domain entries (Phase 1)
     # ------------------------------------------------------------------
 
-    def collect_tim_barrel_entries(self) -> List[TIMBarrelEntry]:
-        """Return all PFAM and InterPro entries annotated as TIM barrel."""
+    def collect_domain_entries(
+        self,
+        annotation: str,
+        search: str = "",
+        extra_accessions: tuple = (),
+    ) -> List[TIMBarrelEntry]:
+        """
+        Return all PFAM and InterPro entries for a domain using up to three strategies:
+        1. annotation= query (exact InterPro annotation term, e.g. 'TIM barrel')
+        2. search= query (text search, e.g. 'propeller')
+        3. extra_accessions — mandatory accessions to always include
+
+        Results are deduplicated by accession.
+        """
+        seen: set = set()
         entries: List[TIMBarrelEntry] = []
 
-        logger.info("Fetching PFAM TIM barrel entries from InterPro...")
-        for raw in self.client.get_tim_barrel_pfam_entries():
-            entry = _parse_tim_barrel_entry(raw, entry_type="pfam")
-            if entry:
+        def _add(raw: dict, entry_type: str, fallback: str) -> None:
+            entry = _parse_domain_entry(raw, entry_type=entry_type, fallback_annotation=fallback)
+            if entry and entry.accession not in seen:
+                seen.add(entry.accession)
                 entries.append(entry)
 
-        logger.info("Fetching InterPro TIM barrel entries...")
-        for raw in self.client.get_tim_barrel_interpro_entries():
-            entry = _parse_tim_barrel_entry(raw, entry_type="interpro")
-            if entry:
-                entries.append(entry)
+        if annotation:
+            logger.info("Fetching PFAM entries via annotation='%s'...", annotation)
+            for raw in self.client.get_domain_pfam_entries(annotation):
+                _add(raw, "pfam", annotation)
+            logger.info("Fetching InterPro entries via annotation='%s'...", annotation)
+            for raw in self.client.get_domain_interpro_entries(annotation):
+                _add(raw, "interpro", annotation)
 
-        logger.info("Collected %d TIM barrel entries", len(entries))
+        if search:
+            logger.info("Fetching PFAM entries via search='%s'...", search)
+            for raw in self.client.search_pfam_entries(search):
+                _add(raw, "pfam", search)
+            logger.info("Fetching InterPro entries via search='%s'...", search)
+            for raw in self.client.search_interpro_entries(search):
+                _add(raw, "interpro", search)
+
+        for accession in extra_accessions:
+            if accession in seen:
+                continue
+            logger.info("Fetching extra entry %s...", accession)
+            db_type = "pfam" if accession.startswith("PF") else "interpro"
+            raw = self.client.get_entry(accession)
+            if raw:
+                _add({"metadata": raw.get("metadata", raw)}, db_type, accession)
+
+        logger.info("Collected %d domain entries total", len(entries))
         return entries
 
     # ------------------------------------------------------------------
-    # Human proteins (Phase 2)
+    # Proteins (Phase 2)
     # ------------------------------------------------------------------
 
-    def collect_human_proteins(
-        self, entries: List[TIMBarrelEntry]
+    def collect_proteins(
+        self,
+        entries: List[TIMBarrelEntry],
+        organism: str,
+        taxon_id: int,
     ) -> List[Protein]:
-        """Return human proteins for every entry in *entries*, deduplicated."""
+        """Return proteins for *organism* (by *taxon_id*) across all *entries*, deduplicated."""
         seen: set = set()
         proteins: List[Protein] = []
 
         for entry in entries:
-            logger.info("Fetching proteins for %s (%s)", entry.accession, entry.name)
+            logger.info("Fetching %s proteins for %s (%s)", organism, entry.accession, entry.name)
             try:
-                uniprot_ids = self.client.get_human_proteins_for_entry(entry.accession)
+                uniprot_ids = self.client.get_proteins_for_entry(entry.accession, taxon_id)
             except Exception as e:
                 logger.error("Failed to fetch proteins for %s: %s", entry.accession, e)
                 continue
@@ -63,11 +98,11 @@ class InterProCollector:
                     Protein(
                         uniprot_id=uid,
                         tim_barrel_accession=entry.accession,
-                        organism="Homo sapiens",
+                        organism=organism,
                     )
                 )
 
-        logger.info("Collected %d unique human proteins", len(proteins))
+        logger.info("Collected %d unique %s proteins", len(proteins), organism)
         return proteins
 
 
@@ -75,17 +110,20 @@ class InterProCollector:
 # Pure parsing helpers
 # ---------------------------------------------------------------------------
 
-def _parse_tim_barrel_entry(raw: dict, entry_type: str) -> Optional[TIMBarrelEntry]:
+def _parse_domain_entry(
+    raw: dict,
+    entry_type: str,
+    fallback_annotation: str = "domain",
+) -> Optional[TIMBarrelEntry]:
     meta = raw.get("metadata", {})
     accession = meta.get("accession", "")
     if not accession:
         return None
 
-    # The annotation field differs between PFAM and InterPro responses
     annotation = (
         meta.get("integrated", "")
         or meta.get("description", "")
-        or "TIM barrel"
+        or fallback_annotation
     )
 
     try:
