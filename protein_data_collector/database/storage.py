@@ -31,7 +31,7 @@ def upsert_domain_entry(
         VALUES (?, ?, ?, ?, ?)
         """,
         (entry.accession, entry.entry_type, entry.name,
-         entry.description, entry.tim_barrel_annotation),
+         entry.description, entry.domain_annotation),
     )
 
 

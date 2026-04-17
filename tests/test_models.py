@@ -9,23 +9,28 @@ from protein_data_collector.models.entities import Isoform, Protein, TIMBarrelEn
 class TestTIMBarrelEntry:
     def test_valid_pfam(self):
         e = TIMBarrelEntry(accession="PF00394", entry_type="pfam",
-                           name="TIM", tim_barrel_annotation="TIM barrel")
+                           name="TIM", domain_annotation="TIM barrel")
         assert e.accession == "PF00394"
 
     def test_valid_interpro(self):
         e = TIMBarrelEntry(accession="IPR013785", entry_type="interpro",
-                           name="TIM", tim_barrel_annotation="TIM barrel")
+                           name="TIM", domain_annotation="TIM barrel")
         assert e.entry_type == "interpro"
+
+    def test_valid_cathgene3d(self):
+        e = TIMBarrelEntry(accession="G3DSA:3.20.20.80", entry_type="cathgene3d",
+                           name="Glycosidases", domain_annotation="3.20.20")
+        assert e.entry_type == "cathgene3d"
 
     def test_bad_accession(self):
         with pytest.raises(ValidationError, match="Accession must start"):
             TIMBarrelEntry(accession="XY12345", entry_type="pfam",
-                           name="X", tim_barrel_annotation="X")
+                           name="X", domain_annotation="X")
 
     def test_bad_entry_type(self):
         with pytest.raises(ValidationError, match="entry_type must be"):
             TIMBarrelEntry(accession="PF00001", entry_type="unknown",
-                           name="X", tim_barrel_annotation="X")
+                           name="X", domain_annotation="X")
 
 
 class TestIsoform:

@@ -13,7 +13,8 @@ class DomainConfig:
     entries_table: str                  # e.g. "tb_entries"
     table_prefix: str                   # e.g. "tb_" — used to derive organism tables
     interpro_search: str = ""           # term for InterPro search= query (text match, fallback)
-    extra_accessions: tuple = ()        # additional accessions to always include
+    cathgene3d_search: str = ""         # search= query for CATH Gene3D (catches structurally-classified entries with no IPR parent)
+    extra_accessions: tuple = ()        # additional accessions to always include; never removed by cleanup
 
 
 @dataclass
@@ -40,6 +41,10 @@ DOMAINS: Dict[str, DomainConfig] = {
         interpro_annotation="TIM barrel",
         entries_table="tb_entries",
         table_prefix="tb_",
+        cathgene3d_search="3.20.20",    # CATH TIM barrel superfamilies (3.20.20.x); catches structurally-confirmed entries with no IPR parent
+        extra_accessions=(
+            "IPR011060",   # Ribulose-phosphate binding barrel (SSF51366 parent) — not returned by annotation= query
+        ),
     ),
     "beta_propeller": DomainConfig(
         display_name="Beta propeller",
@@ -47,6 +52,7 @@ DOMAINS: Dict[str, DomainConfig] = {
         entries_table="bp_entries",
         table_prefix="bp_",
         interpro_search="propeller",      # text search catches named beta-propeller entries
+        cathgene3d_search="2.130",        # CATH beta propeller superfamilies (2.130.x.x); catches structurally-confirmed entries with no Pfam entry (e.g. integrins, RCC1)
         extra_accessions=(                # WD40 superfamilies — common beta propeller not named "propeller"
             "PF00400",    # WD domain, G-beta repeat (WD40)
             "IPR001680",  # WD40 repeat

@@ -99,6 +99,26 @@ class DataCollector:
         logger.info("Collection complete.\n%s", report.summary())
         return report
 
+    def collect_entries_and_proteins(self) -> CollectionReport:
+        """Phase 1 + 2 only — update entries and proteins without touching isoforms.
+
+        Useful after adding new entry sources (e.g. Gene3D) or when extra_accessions
+        were removed from the DB and need to be restored.  Run --resume afterwards to
+        collect isoforms for any newly added proteins.
+        """
+        ensure_db(self.db_path)
+        report = CollectionReport()
+
+        entries = self._phase1_domain_entries()
+        report.domain_entries = len(entries)
+
+        proteins = self._phase2_proteins(entries)
+        proteins = self._phase2b_deduplicate(proteins)
+        report.proteins_collected = len(proteins)
+
+        logger.info("Entries+proteins collection complete.\n%s", report.summary())
+        return report
+
     def recollect_all_isoforms(self) -> CollectionReport:
         """Delete all isoform rows and re-fetch from UniProt."""
         ensure_db(self.db_path)
@@ -192,20 +212,54 @@ class DataCollector:
             "Phase 1: collecting %s entries from InterPro", self.domain.display_name
         )
 
-        # Re-use existing DB entries when available — domain families are
-        # organism-independent, so there's no need to re-fetch on subsequent runs.
         with get_connection(self.db_path) as conn:
             existing = get_all_domain_entries(conn, table=self.domain.entries_table)
+
         if existing:
-            logger.info(
-                "Phase 1: found %d entries in DB — skipping InterPro fetch",
-                len(existing),
+            existing_accessions = {row["accession"] for row in existing}
+            existing_types = {row["entry_type"] for row in existing}
+
+            missing_extra = [
+                a for a in self.domain.extra_accessions
+                if a not in existing_accessions
+            ]
+            need_cathgene3d = (
+                self.domain.cathgene3d_search
+                and "cathgene3d" not in existing_types
             )
+
+            if not missing_extra and not need_cathgene3d:
+                logger.info(
+                    "Phase 1: found %d entries in DB — skipping InterPro fetch",
+                    len(existing),
+                )
+                return [TIMBarrelEntry(**row) for row in existing]
+
+            # Fetch only what is missing — extra_accessions and/or cathgene3d search
+            if missing_extra:
+                logger.info(
+                    "Phase 1: found %d entries in DB but %d extra_accessions missing (%s) — fetching",
+                    len(existing), len(missing_extra), missing_extra,
+                )
+            if need_cathgene3d:
+                logger.info(
+                    "Phase 1: no cathgene3d entries in DB — running Gene3D search='%s'",
+                    self.domain.cathgene3d_search,
+                )
+            new_entries = self.interpro.collect_domain_entries(
+                annotation="",
+                cathgene3d_search=self.domain.cathgene3d_search if need_cathgene3d else "",
+                extra_accessions=tuple(missing_extra),
+            )
+            with get_connection(self.db_path) as conn:
+                upsert_domain_entries(conn, new_entries, table=self.domain.entries_table)
+                existing = get_all_domain_entries(conn, table=self.domain.entries_table)
             return [TIMBarrelEntry(**row) for row in existing]
 
         entries = self.interpro.collect_domain_entries(
             annotation=self.domain.interpro_annotation,
             search=self.domain.interpro_search,
+            cathgene3d_search=self.domain.cathgene3d_search,
             extra_accessions=self.domain.extra_accessions,
         )
         with get_connection(self.db_path) as conn:

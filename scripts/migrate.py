@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.database.connection import ensure_db, get_connection
 from protein_data_collector.database.storage import (
-    upsert_isoforms, upsert_proteins, upsert_tim_barrel_entries,
+    upsert_domain_entries, upsert_isoforms, upsert_proteins,
 )
 from protein_data_collector.models.entities import Isoform, Protein, TIMBarrelEntry
 
@@ -67,13 +67,13 @@ def _migrate_tim_barrel_entries(old: sqlite3.Connection, new_path: str) -> None:
                 entry_type=r["entry_type"],
                 name=r["name"],
                 description=r["description"],
-                tim_barrel_annotation=r["tim_barrel_annotation"] or "TIM barrel",
+                domain_annotation=r.get("domain_annotation") or r.get("tim_barrel_annotation") or "TIM barrel",
             ))
         except Exception as e:
             logger.warning("Skipping tim_barrel_entry %s: %s", r["accession"], e)
 
     with get_connection(new_path) as conn:
-        upsert_tim_barrel_entries(conn, entries)
+        upsert_domain_entries(conn, entries)
     logger.info("Migrated %d tim_barrel_entries", len(entries))
 
 

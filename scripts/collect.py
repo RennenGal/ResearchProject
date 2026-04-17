@@ -53,6 +53,9 @@ def main() -> None:
                         help="Organism to collect data for (default: homo_sapiens)")
     parser.add_argument("--resume", action="store_true",
                         help="Only collect isoforms for proteins not yet processed")
+    parser.add_argument("--collect-proteins", action="store_true",
+                        help="Phase 1+2 only: update entries and proteins; skip isoform collection. "
+                             "Run --resume afterwards to collect isoforms for new proteins.")
     parser.add_argument("--recollect-isoforms", action="store_true",
                         help="Delete all isoforms and re-fetch from UniProt")
     parser.add_argument("--backfill-domains", action="store_true",
@@ -72,7 +75,11 @@ def main() -> None:
 
     collector = DataCollector(db_path=db_path, domain=args.domain, organism=args.organism)
 
-    if args.backfill_domains:
+    if args.collect_proteins:
+        logger.info("Collecting entries and proteins (Phase 1+2 only)...")
+        report = collector.collect_entries_and_proteins()
+        print("\n" + report.summary())
+    elif args.backfill_domains:
         logger.info("Backfilling domain locations for canonical isoforms...")
         updated = collector.backfill_domain_locations()
         print(f"\nUpdated {updated} isoforms with domain location.")

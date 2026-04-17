@@ -21,13 +21,16 @@ class InterProCollector:
         self,
         annotation: str,
         search: str = "",
+        cathgene3d_search: str = "",
         extra_accessions: tuple = (),
     ) -> List[TIMBarrelEntry]:
         """
-        Return all PFAM and InterPro entries for a domain using up to three strategies:
-        1. annotation= query (exact InterPro annotation term, e.g. 'TIM barrel')
-        2. search= query (text search, e.g. 'propeller')
-        3. extra_accessions — mandatory accessions to always include
+        Return all domain entries using up to four strategies:
+        1. annotation= query  (exact InterPro annotation term, e.g. 'TIM barrel')
+        2. search= query      (text search on pfam+interpro, e.g. 'propeller')
+        3. cathgene3d_search  (search CATH Gene3D for structurally-classified entries
+                               that have no Pfam/InterPro parent, e.g. '3.20.20')
+        4. extra_accessions   (mandatory accessions; fetched individually, never skipped)
 
         Results are deduplicated by accession.
         """
@@ -56,11 +59,21 @@ class InterProCollector:
             for raw in self.client.search_interpro_entries(search):
                 _add(raw, "interpro", search)
 
+        if cathgene3d_search:
+            logger.info("Fetching CATH Gene3D entries via search='%s'...", cathgene3d_search)
+            for raw in self.client.search_cathgene3d_entries(cathgene3d_search):
+                acc = raw.get("metadata", {}).get("accession", "")
+                # Only keep entries whose accession matches the search prefix
+                # (e.g. '3.20.20' filters to TIM barrel superfamilies only)
+                if cathgene3d_search in acc:
+                    _add(raw, "cathgene3d", cathgene3d_search)
+
         for accession in extra_accessions:
             if accession in seen:
                 continue
             logger.info("Fetching extra entry %s...", accession)
-            db_type = "pfam" if accession.startswith("PF") else "interpro"
+            from ..api.interpro_client import _db_for_accession
+            db_type = _db_for_accession(accession)
             raw = self.client.get_entry(accession)
             if raw:
                 _add({"metadata": raw.get("metadata", raw)}, db_type, accession)
@@ -120,19 +133,37 @@ def _parse_domain_entry(
     if not accession:
         return None
 
-    annotation = (
-        meta.get("integrated", "")
-        or meta.get("description", "")
-        or fallback_annotation
-    )
+    # `name` can be a plain string (paginated results) or a dict with 'name'/'short'
+    # keys (individual GET responses).
+    raw_name = meta.get("name", accession)
+    if isinstance(raw_name, dict):
+        name = raw_name.get("name") or raw_name.get("short") or accession
+    else:
+        name = raw_name or accession
+
+    # `description` can be a plain string or a list of rich-text dicts from the API.
+    raw_desc = meta.get("description")
+    if isinstance(raw_desc, list):
+        description = " ".join(
+            d.get("text", "") for d in raw_desc if isinstance(d, dict)
+        ).strip() or None
+    else:
+        description = raw_desc or None
+
+    # `integrated` is the parent IPR accession for PFAM/Gene3D entries.
+    integrated = meta.get("integrated")
+    if isinstance(integrated, dict):
+        integrated = integrated.get("accession", "")
+
+    annotation = integrated or description or fallback_annotation
 
     try:
         return TIMBarrelEntry(
             accession=accession,
             entry_type=entry_type,
-            name=meta.get("name", accession),
-            description=meta.get("description"),
-            tim_barrel_annotation=annotation,
+            name=name,
+            description=description,
+            domain_annotation=annotation,
         )
     except Exception as e:
         logger.warning("Skipping malformed entry %s: %s", accession, e)

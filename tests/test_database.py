@@ -36,7 +36,7 @@ def entry():
         accession="PF00394",
         entry_type="pfam",
         name="TIM barrel",
-        tim_barrel_annotation="TIM barrel domain",
+        domain_annotation="TIM barrel domain",
     )
 
 

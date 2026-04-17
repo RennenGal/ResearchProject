@@ -41,14 +41,23 @@ class InterProClient:
         """Return all InterPro entries whose name/description contains *search*."""
         return self._paginate("entry/interpro/", params={"search": search})
 
+    def search_cathgene3d_entries(self, search: str) -> List[Dict[str, Any]]:
+        """Return all CATH Gene3D entries whose accession or name contains *search*.
+
+        Useful for collecting structurally-classified entries (e.g. '3.20.20' for TIM
+        barrels) that have no Pfam or InterPro parent and are otherwise invisible to
+        annotation= / search= queries on pfam/interpro endpoints.
+        """
+        return self._paginate("entry/cathgene3d/", params={"search": search})
+
     def get_entry(self, accession: str) -> Optional[Dict[str, Any]]:
-        """Fetch a single entry by accession (pfam or interpro)."""
-        db = "pfam" if accession.startswith("PF") else "interpro"
+        """Fetch a single entry by accession (pfam, interpro, or cathgene3d)."""
+        db = _db_for_accession(accession)
         return self._get(f"entry/{db}/{accession}")
 
     def get_proteins_for_entry(self, accession: str, taxon_id: int) -> List[str]:
         """Return UniProt IDs of proteins for *taxon_id* belonging to *accession*."""
-        db = "pfam" if accession.startswith("PF") else "interpro"
+        db = _db_for_accession(accession)
         endpoint = f"protein/uniprot/taxonomy/uniprot/{taxon_id}/entry/{db}/{accession}/"
         results = self._paginate(endpoint)
         return [r.get("metadata", {}).get("accession") for r in results
@@ -70,7 +79,7 @@ class InterProClient:
 
         Returns a dict {domain_id, start, end, length, source} or None.
         """
-        db = "pfam" if tim_barrel_accession.startswith("PF") else "interpro"
+        db = _db_for_accession(tim_barrel_accession)
         endpoint = f"entry/{db}/{tim_barrel_accession}/protein/uniprot/{uniprot_id}"
         data = self._get(endpoint)
         if not data:
@@ -139,3 +148,12 @@ class InterProClient:
             p = {}  # params are encoded in next_url after first page
 
         return all_results
+
+
+def _db_for_accession(accession: str) -> str:
+    """Return the InterPro API database name for a given accession string."""
+    if accession.startswith("PF"):
+        return "pfam"
+    if accession.startswith("G3DSA:"):
+        return "cathgene3d"
+    return "interpro"

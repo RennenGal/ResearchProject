@@ -21,7 +21,7 @@ _CREATE_TABLES = """
 
 CREATE TABLE IF NOT EXISTS tb_entries (
     accession         TEXT PRIMARY KEY,
-    entry_type        TEXT NOT NULL CHECK (entry_type IN ('pfam', 'interpro')),
+    entry_type        TEXT NOT NULL CHECK (entry_type IN ('pfam', 'interpro', 'cathgene3d')),
     name              TEXT NOT NULL,
     description       TEXT,
     domain_annotation TEXT NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS tb_entries (
 
 CREATE TABLE IF NOT EXISTS bp_entries (
     accession         TEXT PRIMARY KEY,
-    entry_type        TEXT NOT NULL CHECK (entry_type IN ('pfam', 'interpro')),
+    entry_type        TEXT NOT NULL CHECK (entry_type IN ('pfam', 'interpro', 'cathgene3d')),
     name              TEXT NOT NULL,
     description       TEXT,
     domain_annotation TEXT NOT NULL,

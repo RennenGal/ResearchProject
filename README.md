@@ -15,24 +15,23 @@ local SQLite database. Supports multiple domain families and organisms.
 
 | | Count |
 |---|---|
-| TIM barrel families (3 PFAM + 34 InterPro) | 37 |
-| Proteins — total collected | 572 |
-| Proteins — canonical representatives | 334 |
-| Isoforms — canonical | 334 |
-| Isoforms — alternative | 131 |
-| **Isoforms — total** | **465** |
-| AS-affected isoforms (domain disrupted) | 17 |
+| TIM barrel families (38 Pfam/InterPro + 35 Gene3D CATH) | 73 |
+| Proteins — canonical | 1,174 |
+| Isoforms — canonical | 1,174 |
+| Isoforms — alternative | 249 |
+| **Isoforms — total** | **1,423** |
+| AS-affected isoforms (domain disrupted) | 37 |
 
 ### Beta propeller (Homo sapiens)
 
 | | Count |
 |---|---|
-| Beta propeller families (30 PFAM + 114 InterPro) | 144 |
-| Proteins — canonical | 930 |
-| Isoforms — canonical | 930 |
-| Isoforms — alternative | 214 |
-| **Isoforms — total** | **1144** |
-| AS-affected isoforms (domain disrupted) | 32 |
+| Beta propeller families (148 Pfam/InterPro + 9 Gene3D CATH) | 157 |
+| Proteins — canonical | 2,853 |
+| Isoforms — canonical | 2,853 |
+| Isoforms — alternative | 712 |
+| **Isoforms — total** | **3,565** |
+| AS-affected isoforms (domain disrupted) | 143 |
 
 ### Additional organisms (TIM barrel only)
 
@@ -57,7 +56,8 @@ Tables follow a `{domain_prefix}_{table}{organism_suffix}` naming convention:
 
 ```
 tb_entries / bp_entries
-  accession (PK), entry_type, name, description, tim_barrel_annotation
+  accession (PK), entry_type  -- 'pfam' | 'interpro' | 'cathgene3d'
+  name, description, domain_annotation
 ```
 
 ### Proteins
@@ -141,6 +141,11 @@ python scripts/collect.py --recollect-isoforms --domain beta_propeller
 **Backfill domain locations** — populate `tim_barrel_location` for canonical isoforms where it is NULL:
 ```bash
 python scripts/collect.py --backfill-domains --domain tim_barrel
+```
+
+**Update entries and proteins only** (Phase 1+2, no isoform changes):
+```bash
+python scripts/collect.py --collect-proteins --domain tim_barrel
 ```
 
 **Options**:
@@ -231,7 +236,11 @@ protein_data_collector/
     uniprot_client.py    UniProt REST API (protein JSON, isoform FASTA)
   collector/
     interpro_collector.py   Phase 1+2: domain families and proteins
-                            collect_domain_entries() uses annotation=, search=, and extra_accessions
+                            collect_domain_entries() uses four strategies:
+                              1. annotation= (InterPro/Pfam exact match)
+                              2. search= (text fallback)
+                              3. cathgene3d search= (CATH structurally-classified entries)
+                              4. extra_accessions (always-included explicit accessions)
     uniprot_collector.py    Phase 3: isoforms and splice variant extraction
     data_collector.py       Pipeline orchestrator (CollectionReport, backfill, deduplication)
   database/
@@ -254,7 +263,9 @@ scripts/
 
 ### Domain + organism parameterisation
 
-`DomainConfig` holds the InterPro query strategy for a domain (annotation term, text search
-fallback, explicit extra accessions for families with non-standard names such as WD40).
+`DomainConfig` holds the InterPro query strategy for a domain: annotation term, text search
+fallback, `cathgene3d_search` for structurally-classified CATH entries (e.g. `"3.20.20"` for
+TIM barrel, `"2.130"` for beta propeller), and explicit `extra_accessions` for families with
+non-standard names (e.g. WD40 superfamilies for beta propeller).
 `OrganismConfig` holds the NCBI taxon ID and derives table names via
 `protein_table(domain)`, `isoform_table(domain)`, and `affected_isoforms_table(domain)`.

@@ -12,25 +12,25 @@ _VALID_AA = set("ACDEFGHIKLMNPQRSTVWYBZXUOJ")
 
 class TIMBarrelEntry(BaseModel):
     accession: str
-    entry_type: str  # 'pfam' | 'interpro'
+    entry_type: str  # 'pfam' | 'interpro' | 'cathgene3d'
     name: str
     description: Optional[str] = None
-    tim_barrel_annotation: str
+    domain_annotation: str = ""
     created_at: Optional[datetime] = None
 
     @field_validator("accession")
     @classmethod
     def validate_accession(cls, v: str) -> str:
         v = v.strip()
-        if not (v.startswith("PF") or v.startswith("IPR")):
-            raise ValueError("Accession must start with 'PF' or 'IPR'")
+        if not (v.startswith("PF") or v.startswith("IPR") or v.startswith("G3DSA:")):
+            raise ValueError("Accession must start with 'PF', 'IPR', or 'G3DSA:'")
         return v
 
     @field_validator("entry_type")
     @classmethod
     def validate_entry_type(cls, v: str) -> str:
-        if v not in ("pfam", "interpro"):
-            raise ValueError("entry_type must be 'pfam' or 'interpro'")
+        if v not in ("pfam", "interpro", "cathgene3d"):
+            raise ValueError("entry_type must be 'pfam', 'interpro', or 'cathgene3d'")
         return v
 
 

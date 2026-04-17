@@ -29,7 +29,7 @@ def db(tmp_path):
 def seeded_db(db):
     """Database with one family, one protein, two isoforms (canonical + alternative)."""
     entry = TIMBarrelEntry(accession="PF00394", entry_type="pfam",
-                           name="TIM barrel", tim_barrel_annotation="TIM barrel")
+                           name="TIM barrel", domain_annotation="TIM barrel")
     protein = Protein(uniprot_id="P04637", tim_barrel_accession="PF00394",
                       protein_name="p53", gene_name="TP53", reviewed=True)
     canonical = Isoform(
