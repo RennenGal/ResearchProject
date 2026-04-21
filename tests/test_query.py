@@ -36,7 +36,7 @@ def seeded_db(db):
         isoform_id="P04637-1", uniprot_id="P04637", is_canonical=True,
         sequence="ACDEFGHIKLMNPQRSTVWY", sequence_length=20,
         tim_barrel_location={"start": 1, "end": 18, "source": "interpro_api"},
-        ensembl_gene_id="ENSG00000141510",
+        ensembl_transcript_id="ENSG00000141510",
     )
     alt = Isoform(
         isoform_id="P04637-2", uniprot_id="P04637", is_canonical=False,

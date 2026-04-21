@@ -7,9 +7,6 @@ Usage
 Full collection from scratch (TIM barrel, human):
     python scripts/collect.py
 
-Collect beta propeller data for mouse:
-    python scripts/collect.py --domain beta_propeller --organism mus_musculus
-
 Resume isoform collection for proteins not yet processed:
     python scripts/collect.py --resume
 
@@ -72,6 +69,9 @@ def main() -> None:
     logger.info("Database : %s", db_path)
     logger.info("Domain   : %s", args.domain)
     logger.info("Organism : %s", args.organism)
+
+    if args.domain == "beta_propeller" and args.organism != "homo_sapiens":
+        parser.error("beta_propeller is only supported for homo_sapiens")
 
     collector = DataCollector(db_path=db_path, domain=args.domain, organism=args.organism)
 

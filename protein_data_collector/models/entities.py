@@ -64,7 +64,7 @@ class Isoform(BaseModel):
     splice_variants: Optional[List[Dict[str, Any]]] = None    # UniProt Alternative-sequence features
     tim_barrel_location: Optional[Dict[str, Any]] = None      # {domain_id, start, end, length, source}
     tim_barrel_sequence: Optional[str] = None                 # sequence[start-1:end]; None for fragments or missing location
-    ensembl_gene_id: Optional[str] = None
+    ensembl_transcript_id: Optional[str] = None
     alphafold_id: Optional[str] = None
     created_at: Optional[datetime] = None
 

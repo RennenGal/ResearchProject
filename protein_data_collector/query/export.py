@@ -32,12 +32,12 @@ def to_csv(isoforms: List[Dict[str, Any]]) -> str:
     Convert isoform rows to CSV (excludes sequence to keep output readable).
 
     Includes: isoform_id, uniprot_id, is_canonical, sequence_length,
-              exon_count, ensembl_gene_id, alphafold_id,
+              exon_count, ensembl_transcript_id, alphafold_id,
               has_tim_barrel, has_splice_variants
     """
     fields = [
         "isoform_id", "uniprot_id", "is_canonical", "sequence_length",
-        "exon_count", "ensembl_gene_id", "alphafold_id",
+        "exon_count", "ensembl_transcript_id", "alphafold_id",
         "has_tim_barrel", "has_splice_variants",
     ]
     buf = io.StringIO()

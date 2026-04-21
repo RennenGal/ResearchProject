@@ -140,7 +140,7 @@ class AlignmentResult:
     exon_count: Optional[int]
     exon_annotations: Optional[str]
     splice_variants: Optional[str]
-    ensembl_gene_id: Optional[str]
+    ensembl_transcript_id: Optional[str]
     alphafold_id: Optional[str]
     # Alignment-derived
     domain_location: str            # JSON — span in this isoform
@@ -178,7 +178,7 @@ def build_tim_barrel_isoforms(
             alt.exon_count,
             alt.exon_annotations,
             alt.splice_variants,
-            alt.ensembl_gene_id,
+            alt.ensembl_transcript_id,
             alt.alphafold_id,
             can.sequence              AS canonical_sequence,
             can.tim_barrel_sequence   AS canonical_tb_seq,
@@ -264,7 +264,7 @@ def build_tim_barrel_isoforms(
             exon_count=row["exon_count"],
             exon_annotations=row["exon_annotations"],
             splice_variants=row["splice_variants"],
-            ensembl_gene_id=row["ensembl_gene_id"],
+            ensembl_transcript_id=row["ensembl_transcript_id"],
             alphafold_id=row["alphafold_id"],
             domain_location=tb_location,
             domain_sequence=tb_subsequence,
@@ -304,14 +304,14 @@ def populate_tim_barrel_isoforms(
             domain_location, domain_sequence,
             canonical_domain_location, canonical_domain_sequence,
             identity_percentage, alignment_score,
-            ensembl_gene_id, alphafold_id
+            ensembl_transcript_id, alphafold_id
         ) VALUES (
             :isoform_id, :uniprot_id, 0, :sequence, :sequence_length,
             :is_fragment, :exon_count, :exon_annotations, :splice_variants,
             :domain_location, :domain_sequence,
             :canonical_domain_location, :canonical_domain_sequence,
             :identity_percentage, :alignment_score,
-            :ensembl_gene_id, :alphafold_id
+            :ensembl_transcript_id, :alphafold_id
         )
     """, [r.__dict__ for r in results])
 

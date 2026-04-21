@@ -157,7 +157,7 @@ def upsert_isoform(
         INSERT OR REPLACE INTO {table}
             (isoform_id, uniprot_id, is_canonical, sequence, sequence_length,
              is_fragment, exon_count, exon_annotations, splice_variants,
-             tim_barrel_location, tim_barrel_sequence, ensembl_gene_id, alphafold_id)
+             tim_barrel_location, tim_barrel_sequence, ensembl_transcript_id, alphafold_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -172,7 +172,7 @@ def upsert_isoform(
             json.dumps(isoform.splice_variants) if isoform.splice_variants is not None else None,
             json.dumps(isoform.tim_barrel_location) if isoform.tim_barrel_location is not None else None,
             isoform.tim_barrel_sequence,
-            isoform.ensembl_gene_id,
+            isoform.ensembl_transcript_id,
             isoform.alphafold_id,
         ),
     )

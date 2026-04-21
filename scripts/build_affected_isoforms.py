@@ -8,7 +8,7 @@ inserts rows where 12.5% <= identity < 95%.
 
 Usage:
     python scripts/build_affected_isoforms.py
-    python scripts/build_affected_isoforms.py --domain beta_propeller --organism mus_musculus
+    python scripts/build_affected_isoforms.py --domain beta_propeller
     python scripts/build_affected_isoforms.py --db db/protein_data.db
 """
 
@@ -42,6 +42,9 @@ def main() -> None:
         format="%(asctime)s %(levelname)-8s %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
+    if args.domain == "beta_propeller" and args.organism != "homo_sapiens":
+        parser.error("beta_propeller is only supported for homo_sapiens")
 
     domain_cfg   = DOMAINS[args.domain]
     organism_cfg = ORGANISMS[args.organism]

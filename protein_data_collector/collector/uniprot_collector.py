@@ -84,7 +84,7 @@ class UniProtCollector:
             return []
 
         # Shared data extracted once per protein
-        ensembl_gene_id = _extract_ensembl_gene_id(data)
+        ensembl_transcript_id = _extract_ensembl_transcript_id(data)
         alphafold_id = _extract_alphafold_id(data)
         all_splice_features = _extract_all_splice_features(data)
         tim_barrel_loc = self._get_tim_barrel_location(uid, protein.tim_barrel_accession)
@@ -98,7 +98,7 @@ class UniProtCollector:
             sequence_length=len(canonical_seq),
             splice_variants=[],   # canonical has no alternative sequences
             tim_barrel_location=tim_barrel_loc,
-            ensembl_gene_id=ensembl_gene_id,
+            ensembl_transcript_id=ensembl_transcript_id,
             alphafold_id=alphafold_id,
         )
         isoforms: List[Isoform] = [canonical]
@@ -128,7 +128,7 @@ class UniProtCollector:
                     sequence_length=len(sequence),
                     splice_variants=splice_variants,
                     tim_barrel_location=None,  # computed during analysis
-                    ensembl_gene_id=ensembl_gene_id,
+                    ensembl_transcript_id=ensembl_transcript_id,
                     alphafold_id=alphafold_id,
                 )
             )
@@ -192,12 +192,29 @@ def _extract_all_splice_features(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
 
 
-def _extract_ensembl_gene_id(data: Dict[str, Any]) -> Optional[str]:
-    """Return the first Ensembl gene ID from cross-references."""
+def _extract_ensembl_transcript_id(data: Dict[str, Any]) -> Optional[str]:
+    """Return the first Ensembl transcript ID (ENST) from cross-references."""
     for ref in data.get("uniProtKBCrossReferences", []):
         if ref.get("database") == "Ensembl":
             return ref.get("id")
     return None
+
+
+def extract_ensembl_xrefs(data: Dict[str, Any]) -> list:
+    """Return all Ensembl cross-references as dicts with enst_id, ensp_id, ensg_id, isoform_id."""
+    result = []
+    for ref in data.get("uniProtKBCrossReferences", []):
+        if ref.get("database") != "Ensembl":
+            continue
+        props = {p["key"]: p["value"] for p in ref.get("properties", [])}
+        ensg_raw = props.get("GeneId", "")
+        result.append({
+            "enst_id":    ref.get("id", "").split(".")[0],
+            "ensp_id":    props.get("ProteinId", "").split(".")[0],
+            "ensg_id":    ensg_raw.split(".")[0] if ensg_raw else None,
+            "isoform_id": ref.get("isoformId"),
+        })
+    return result
 
 
 def _extract_alphafold_id(data: Dict[str, Any]) -> Optional[str]:

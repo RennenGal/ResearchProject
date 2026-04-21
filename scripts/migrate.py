@@ -154,14 +154,14 @@ def _migrate_isoforms(old: sqlite3.Connection, new_path: str) -> None:
                 pass
 
         # Ensembl gene ID from the nested JSON
-        ensembl_gene_id = None
+        ensembl_transcript_id = None
         ens_ref = r["ensembl_references"] if "ensembl_references" in r.keys() else None
         if ens_ref:
             try:
                 ens_data = json.loads(ens_ref)
                 for mapping in ens_data.get("isoform_mappings", {}).values():
                     if mapping and isinstance(mapping, list):
-                        ensembl_gene_id = mapping[0].get("gene_id")
+                        ensembl_transcript_id = mapping[0].get("gene_id")
                         break
             except (json.JSONDecodeError, AttributeError):
                 pass
@@ -174,7 +174,7 @@ def _migrate_isoforms(old: sqlite3.Connection, new_path: str) -> None:
                 sequence=seq,
                 sequence_length=seq_len or len(seq),
                 tim_barrel_location=tim_loc,
-                ensembl_gene_id=ensembl_gene_id,
+                ensembl_transcript_id=ensembl_transcript_id,
             ))
         except Exception as e:
             logger.warning("Skipping isoform for %s: %s", uid, e)

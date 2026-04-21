@@ -81,7 +81,7 @@ class TestIsoform:
         assert iso.exon_annotations is None
         assert iso.splice_variants is None
         assert iso.tim_barrel_location is None
-        assert iso.ensembl_gene_id is None
+        assert iso.ensembl_transcript_id is None
 
     def test_is_fragment_auto_set_for_short_sequence(self):
         short_seq = "ACDEFGHIKL" * 5   # 50 aa — below threshold

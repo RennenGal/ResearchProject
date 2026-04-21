@@ -66,7 +66,7 @@ def isoform():
         sequence_length=300,
         tim_barrel_location={"domain_id": "PF00394", "start": 50, "end": 280,
                              "length": 231, "source": "interpro_api"},
-        ensembl_gene_id="ENSG00000141510",
+        ensembl_transcript_id="ENSG00000141510",
     )
 
 

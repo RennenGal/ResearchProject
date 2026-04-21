@@ -9,7 +9,7 @@ import pytest
 from protein_data_collector.collector.uniprot_collector import (
     _extract_all_splice_features,
     _extract_alphafold_id,
-    _extract_ensembl_gene_id,
+    _extract_ensembl_transcript_id,
     _parse_alternative_products,
 )
 from tests.conftest import UNIPROT_P53_RESPONSE
@@ -68,13 +68,13 @@ class TestExtractSpliceFeatures:
 
 
 class TestExtractCrossReferences:
-    def test_ensembl_gene_id(self):
-        gene_id = _extract_ensembl_gene_id(UNIPROT_P53_RESPONSE)
+    def test_ensembl_transcript_id(self):
+        gene_id = _extract_ensembl_transcript_id(UNIPROT_P53_RESPONSE)
         assert gene_id == "ENSG00000141510"
 
     def test_ensembl_missing(self):
         data = {**UNIPROT_P53_RESPONSE, "uniProtKBCrossReferences": []}
-        assert _extract_ensembl_gene_id(data) is None
+        assert _extract_ensembl_transcript_id(data) is None
 
     def test_alphafold_id(self):
         af_id = _extract_alphafold_id(UNIPROT_P53_RESPONSE)

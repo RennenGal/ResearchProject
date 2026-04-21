@@ -40,6 +40,21 @@ local SQLite database. Supports multiple domain families and organisms.
 | Mus musculus | 325 | 360 | 4 |
 | Rattus norvegicus | 507 | 515 | 3 |
 
+Beta propeller is only collected for Homo sapiens. Mouse and rat are supported for TIM barrel only.
+
+### Ensembl transcript expansion (TIM barrel, Homo sapiens)
+
+| | Count |
+|---|---|
+| Proteins with Ensembl mapping | 799 |
+| Transcripts collected | 2,714 |
+| Duplicates (sequence already in UniProt isoforms) | 1,490 |
+| Fragments (< 200 aa) | 355 |
+| Novel transcripts | 1,224 |
+| **AS-affected novel transcripts** | **391** |
+
+Results stored in `tb_ensembl_transcripts` and `tb_ensembl_affected` (separate from UniProt isoform tables).
+
 Proteins are deduplicated by `(protein_name, organism)` group: entries that share a name
 and organism with a better-annotated representative are marked redundant via
 `proteins.canonical_uniprot_id`. Isoforms are collected only for canonical proteins.
@@ -63,7 +78,7 @@ tb_entries / bp_entries
 ### Proteins
 
 ```
-tb_proteins / bp_proteins [/ tb_proteins_mus_musculus / ...]
+tb_proteins / bp_proteins [/ tb_proteins_mus_musculus / tb_proteins_rattus_norvegicus]
   uniprot_id (PK), tim_barrel_accession (FK → entries),
   protein_name, gene_name, organism, reviewed,
   protein_existence, annotation_score,
@@ -74,19 +89,19 @@ tb_proteins / bp_proteins [/ tb_proteins_mus_musculus / ...]
 ### Isoforms
 
 ```
-tb_isoforms / bp_isoforms [/ tb_isoforms_mus_musculus / ...]
+tb_isoforms / bp_isoforms [/ tb_isoforms_mus_musculus / tb_isoforms_rattus_norvegicus]
   isoform_id (PK), uniprot_id (FK → proteins), is_canonical,
   sequence, sequence_length,
-  is_fragment,          -- 1 if sequence_length < 200 aa
-  exon_count, exon_annotations,   -- exon_annotations: null (future: Ensembl mapping)
-  splice_variants,      -- JSON; UniProt VSP features per isoform
-  tim_barrel_location,  -- JSON {domain_id, start, end, length, source}
-                        --   populated for canonical isoforms via InterPro
-  tim_barrel_sequence,  -- subsequence sequence[start-1:end]
-  ensembl_gene_id, alphafold_id
+  is_fragment,              -- 1 if sequence_length < 200 aa
+  exon_count, exon_annotations,
+  splice_variants,          -- JSON; UniProt VSP features per isoform
+  tim_barrel_location,      -- JSON {domain_id, start, end, length, source}
+  tim_barrel_sequence,      -- subsequence sequence[start-1:end]
+  ensembl_transcript_id,    -- ENST ID from UniProt cross-reference
+  alphafold_id
 ```
 
-### AS-affected isoforms
+### AS-affected isoforms (UniProt)
 
 ```
 tb_affected_isoforms / bp_affected_isoforms [/ tb_affected_isoforms_mus_musculus / ...]
@@ -97,6 +112,24 @@ tb_affected_isoforms / bp_affected_isoforms [/ tb_affected_isoforms_mus_musculus
   canonical_domain_sequence, -- domain subsequence in the canonical
   alignment_identity,        -- sequence identity between the two domain sequences
   insertion_detected         -- 1 if an insertion relative to canonical was detected
+```
+
+### Ensembl transcript expansion (TIM barrel, Homo sapiens)
+
+```
+tb_ensembl_transcripts
+  enst_id (PK), ensg_id, ensp_id,
+  uniprot_id (FK → tb_proteins), gene_name,
+  sequence, sequence_length, is_fragment,
+  is_mane_select,          -- 1 if canonical Ensembl transcript
+  biotype,
+  duplicate_isoform_id     -- isoform_id if sequence matches an existing UniProt isoform
+
+tb_ensembl_affected
+  id (PK), enst_id (FK), uniprot_id (FK),
+  domain_location, domain_sequence,
+  canonical_domain_location, canonical_domain_sequence,
+  alignment_identity, alignment_score, insertion_detected
 ```
 
 DB triggers (`trg_block_redundant_tb`, `trg_block_redundant_bp`, etc.) prevent inserting
@@ -234,6 +267,7 @@ protein_data_collector/
   api/
     interpro_client.py   InterPro REST API (pagination, multi-strategy entry search, domain boundaries)
     uniprot_client.py    UniProt REST API (protein JSON, isoform FASTA)
+    ensembl_client.py    Ensembl REST API (ENST→ENSG, transcript listing, protein sequences)
   collector/
     interpro_collector.py   Phase 1+2: domain families and proteins
                             collect_domain_entries() uses four strategies:
@@ -244,7 +278,7 @@ protein_data_collector/
     uniprot_collector.py    Phase 3: isoforms and splice variant extraction
     data_collector.py       Pipeline orchestrator (CollectionReport, backfill, deduplication)
   database/
-    schema.py     SQL DDL — 20 tables for 2 domains x 3 organisms, init_db()
+    schema.py     SQL DDL — tables for 2 domains x organisms + Ensembl expansion, init_db()
     connection.py get_connection() context manager, ensure_db()
     storage.py    upsert_*/get_* CRUD functions (parameterised table names)
   models/
@@ -253,12 +287,15 @@ protein_data_collector/
     engine.py     QueryEngine — SQL-backed queries (domain + organism aware)
     export.py     to_fasta(), to_csv(), to_json()
   config.py       DomainConfig + OrganismConfig registries; DOMAINS and ORGANISMS dicts
+                  Note: beta_propeller is Homo sapiens only; mouse/rat for TIM barrel only
   errors.py       Exception hierarchy
   retry.py        tenacity decorator
 
 scripts/
-  collect.py                Data collection entry point (--domain, --organism)
+  collect.py                  Data collection entry point (--domain, --organism)
   build_affected_isoforms.py  AS-affected isoform detection and storage
+  collect_ensembl.py          Ensembl transcript expansion for TIM barrel (Homo sapiens)
+  run_hmmer.py                HMMER3 domain boundary scan using pyhmmer
 ```
 
 ### Domain + organism parameterisation
