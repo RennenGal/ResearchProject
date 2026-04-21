@@ -53,6 +53,20 @@ Beta propeller is only collected for Homo sapiens. Mouse and rat are supported f
 | Novel transcripts | 1,224 |
 | **AS-affected novel transcripts** | **391** |
 
+### Exon boundary analysis (AS-affected Ensembl transcripts)
+
+| | Count |
+|---|---|
+| AS-affected transcripts with exon data | 391 |
+| With ≥1 exon junction inside domain | 391 (100%) |
+| Average exon junctions inside domain | 7.1 |
+| Transcripts with exactly 1 junction in domain | 19 |
+
+All 391 AS-affected transcripts have at least one exon junction inside the TIM barrel domain
+(average 7.1 per transcript). This is expected given domain lengths of ~280 aa and 8–15 coding
+exon boundaries per gene. Transcripts with fewer intra-domain junctions (e.g. exactly 1) are
+candidates for highly targeted splice events.
+
 Results stored in `tb_ensembl_transcripts` and `tb_ensembl_affected` (separate from UniProt isoform tables).
 
 Proteins are deduplicated by `(protein_name, organism)` group: entries that share a name
@@ -123,13 +137,17 @@ tb_ensembl_transcripts
   sequence, sequence_length, is_fragment,
   is_mane_select,          -- 1 if canonical Ensembl transcript
   biotype,
-  duplicate_isoform_id     -- isoform_id if sequence matches an existing UniProt isoform
+  duplicate_isoform_id,    -- isoform_id if sequence matches an existing UniProt isoform
+  exon_annotations         -- JSON list of 1-based protein positions of each exon's last AA
+                           --   (all coding exons except the final one; ceiling(cumulative_cds/3))
 
 tb_ensembl_affected
   id (PK), enst_id (FK), uniprot_id (FK),
   domain_location, domain_sequence,
   canonical_domain_location, canonical_domain_sequence,
-  alignment_identity, alignment_score, insertion_detected
+  alignment_identity, alignment_score, insertion_detected,
+  exon_boundary_in_domain,          -- 1 if any exon junction falls inside [domain_start, domain_end)
+  exon_boundaries_in_domain_count   -- number of exon junctions inside the domain
 ```
 
 DB triggers (`trg_block_redundant_tb`, `trg_block_redundant_bp`, etc.) prevent inserting
@@ -203,6 +221,27 @@ python scripts/build_affected_isoforms.py --domain beta_propeller --organism hom
 ```
 
 Results are stored in the corresponding `*_affected_isoforms` table.
+
+---
+
+## Ensembl transcript expansion and exon boundary analysis
+
+Expand TIM barrel coverage with Ensembl protein-coding transcripts (human only):
+```bash
+python scripts/collect_ensembl.py
+python scripts/collect_ensembl.py --rebuild    # drop and re-collect
+python scripts/collect_ensembl.py --limit 50   # test run (first 50 proteins)
+```
+
+Backfill exon boundary data and flag domain-disrupting junctions:
+```bash
+python scripts/backfill_exons.py
+python scripts/backfill_exons.py --phase1-only  # fetch exon data only
+python scripts/backfill_exons.py --phase2-only  # flag domain boundaries only
+```
+
+Results are stored in `tb_ensembl_transcripts` (with `exon_annotations`) and
+`tb_ensembl_affected` (with `exon_boundary_in_domain` and `exon_boundaries_in_domain_count`).
 
 ---
 
@@ -295,6 +334,8 @@ scripts/
   collect.py                  Data collection entry point (--domain, --organism)
   build_affected_isoforms.py  AS-affected isoform detection and storage
   collect_ensembl.py          Ensembl transcript expansion for TIM barrel (Homo sapiens)
+  backfill_exons.py           Fetch exon boundary data (protein-space) and flag
+                              AS-affected transcripts whose exon junctions fall inside the domain
   run_hmmer.py                HMMER3 domain boundary scan using pyhmmer
 ```
 

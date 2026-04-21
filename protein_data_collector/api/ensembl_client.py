@@ -139,3 +139,66 @@ def protein_sequence(enst_id: str) -> Optional[str]:
         # Ensembl sometimes returns sequences ending with * (stop codon)
         return seq.rstrip("*") if seq else None
     return None
+
+
+def transcript_exon_boundaries(enst_id: str) -> list[int]:
+    """
+    Return protein-space exon boundary positions for a transcript.
+
+    Each integer is the 1-based amino-acid position of the last residue
+    contributed by that exon (ceiling division of cumulative CDS bases).
+    The final exon is excluded — its downstream junction is the end of the protein.
+
+    Returns [] if data is unavailable or the transcript has no Translation.
+
+    Algorithm
+    ---------
+    1. Fetch /lookup/id/{ENST}?expand=1 to get Exon list + Translation CDS bounds.
+    2. Sort exons by rank (transcription order, works for both strands because
+       Ensembl rank reflects transcription direction, not genomic direction).
+    3. Clip each exon to [Translation.start, Translation.end] to skip UTR bases.
+    4. Accumulate CDS bases; after each exon (except the last) compute
+       boundary = ceil(cumulative / 3).
+    """
+    enst = _strip_version(enst_id)
+    data = _get(f"/lookup/id/{enst}", params={"expand": 1, "content-type": "application/json"})
+    if not isinstance(data, dict):
+        return []
+
+    translation = data.get("Translation")
+    if not isinstance(translation, dict):
+        return []
+
+    cds_start = translation.get("start")
+    cds_end   = translation.get("end")
+    if cds_start is None or cds_end is None:
+        return []
+
+    exons = data.get("Exon", [])
+    if not exons:
+        return []
+
+    exons_sorted = sorted(exons, key=lambda e: e.get("rank", 0))
+
+    # Filter to only coding exons (overlapping the CDS)
+    coding_exons = []
+    for ex in exons_sorted:
+        ex_start = ex.get("start")
+        ex_end   = ex.get("end")
+        if ex_start is None or ex_end is None:
+            continue
+        clipped_start = max(ex_start, cds_start)
+        clipped_end   = min(ex_end,   cds_end)
+        if clipped_end < clipped_start:
+            continue
+        coding_exons.append(clipped_end - clipped_start + 1)
+
+    boundaries = []
+    cumulative = 0
+    for i, cds_bases in enumerate(coding_exons):
+        cumulative += cds_bases
+        if i < len(coding_exons) - 1:
+            # Ceiling division: last AA that has any bases in this exon
+            boundaries.append((cumulative + 2) // 3)
+
+    return boundaries

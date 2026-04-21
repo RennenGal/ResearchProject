@@ -357,6 +357,7 @@ CREATE TABLE IF NOT EXISTS tb_ensembl_transcripts (
     is_mane_select       INTEGER NOT NULL DEFAULT 0,
     biotype              TEXT,
     duplicate_isoform_id TEXT,
+    exon_annotations     TEXT,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
 );
@@ -371,8 +372,10 @@ CREATE TABLE IF NOT EXISTS tb_ensembl_affected (
     canonical_domain_sequence TEXT,
     alignment_identity        REAL NOT NULL,
     alignment_score           INTEGER NOT NULL,
-    insertion_detected        INTEGER NOT NULL DEFAULT 0,
-    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    insertion_detected                INTEGER NOT NULL DEFAULT 0,
+    exon_boundary_in_domain           INTEGER NOT NULL DEFAULT 0,
+    exon_boundaries_in_domain_count   INTEGER NOT NULL DEFAULT 0,
+    created_at                        DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (enst_id)    REFERENCES tb_ensembl_transcripts(enst_id) ON DELETE CASCADE,
     FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
 );
