@@ -88,11 +88,13 @@ CREATE TABLE IF NOT EXISTS tb_affected_isoforms (
     domain_sequence           TEXT,
     canonical_domain_location TEXT,
     canonical_domain_sequence TEXT,
-    identity_percentage       REAL NOT NULL,
-    alignment_score           INTEGER NOT NULL,
-    ensembl_transcript_id           TEXT,
-    alphafold_id              TEXT,
-    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    identity_percentage               REAL NOT NULL,
+    alignment_score                   INTEGER NOT NULL,
+    exon_boundary_in_domain           INTEGER NOT NULL DEFAULT 0,
+    exon_boundaries_in_domain_count   INTEGER NOT NULL DEFAULT 0,
+    ensembl_transcript_id             TEXT,
+    alphafold_id                      TEXT,
+    created_at                        DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
 );
 

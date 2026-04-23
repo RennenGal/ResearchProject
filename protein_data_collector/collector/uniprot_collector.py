@@ -182,10 +182,11 @@ def _extract_all_splice_features(data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     return [
         {
-            "featureId": f.get("featureId"),
-            "location": f.get("location"),
-            "description": f.get("description"),
-            "evidences": f.get("evidences", []),
+            "featureId":          f.get("featureId"),
+            "location":           f.get("location"),
+            "description":        f.get("description"),
+            "evidences":          f.get("evidences", []),
+            "alternativeSequence": f.get("alternativeSequence"),  # None for deletions
         }
         for f in data.get("features", [])
         if f.get("type") == "Alternative sequence"

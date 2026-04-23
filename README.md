@@ -21,6 +21,9 @@ local SQLite database. Supports multiple domain families and organisms.
 | Isoforms — alternative | 249 |
 | **Isoforms — total** | **1,423** |
 | AS-affected isoforms (domain disrupted) | 37 |
+| AS-affected with exon junction in domain | 37 / 37 (36 with exon data) |
+| Min exon junctions inside domain | 2 |
+| Avg exon junctions inside domain | 7.5 |
 
 ### Beta propeller (Homo sapiens)
 
@@ -109,7 +112,11 @@ tb_isoforms / bp_isoforms [/ tb_isoforms_mus_musculus / tb_isoforms_rattus_norve
   sequence, sequence_length,
   is_fragment,              -- 1 if sequence_length < 200 aa
   exon_count, exon_annotations,
-  splice_variants,          -- JSON; UniProt VSP features per isoform
+                            -- exon_annotations: JSON list of 1-based protein positions of each
+                            --   exon boundary (last AA of each exon, ceiling(cumulative_cds/3))
+                            --   Canonical: fetched from Ensembl via ENST ID
+                            --   Alternative: transformed from canonical via VSP coordinate mapping
+  splice_variants,          -- JSON; UniProt VSP features per isoform (incl. alternativeSequence)
   tim_barrel_location,      -- JSON {domain_id, start, end, length, source}
   tim_barrel_sequence,      -- subsequence sequence[start-1:end]
   ensembl_transcript_id,    -- ENST ID from UniProt cross-reference
@@ -120,13 +127,16 @@ tb_isoforms / bp_isoforms [/ tb_isoforms_mus_musculus / tb_isoforms_rattus_norve
 
 ```
 tb_affected_isoforms / bp_affected_isoforms [/ tb_affected_isoforms_mus_musculus / ...]
-  id (PK), isoform_id, uniprot_id,
-  domain_location,           -- JSON {start, end} of domain in the alternative isoform
-  domain_sequence,           -- domain subsequence in the alternative isoform
-  canonical_domain_location, -- JSON {start, end} in the canonical isoform
-  canonical_domain_sequence, -- domain subsequence in the canonical
-  alignment_identity,        -- sequence identity between the two domain sequences
-  insertion_detected         -- 1 if an insertion relative to canonical was detected
+  isoform_id (PK), uniprot_id (FK → proteins),
+  sequence, sequence_length, exon_count, exon_annotations, splice_variants,
+  domain_location,                    -- JSON {start, end} of domain in the alternative isoform
+  domain_sequence,                    -- domain subsequence in the alternative isoform
+  canonical_domain_location,          -- JSON {start, end} in the canonical isoform
+  canonical_domain_sequence,          -- domain subsequence in the canonical
+  identity_percentage,                -- sequence identity (%) between the two domain sequences
+  alignment_score,                    -- raw match count from sliding-window alignment
+  exon_boundary_in_domain,            -- 1 if any exon junction falls in [domain_start, domain_end)
+  exon_boundaries_in_domain_count     -- number of such junctions
 ```
 
 ### Ensembl transcript expansion (TIM barrel, Homo sapiens)
@@ -336,8 +346,13 @@ scripts/
   collect.py                  Data collection entry point (--domain, --organism)
   build_affected_isoforms.py  AS-affected isoform detection and storage
   collect_ensembl.py          Ensembl transcript expansion for TIM barrel (Homo sapiens)
-  backfill_exons.py           Fetch exon boundary data (protein-space) and flag
-                              AS-affected transcripts whose exon junctions fall inside the domain
+  backfill_isoform_exons.py   Backfill exon junction data for tb_isoforms (UniProt isoforms)
+                              Phase 1: fetch canonical boundaries from Ensembl via ENST IDs
+                              Phase 2: derive alternative boundaries via VSP coordinate mapping
+                                (sequence-matching on unchanged flanking segments; handles both
+                                deletions and substitutions without re-fetching)
+                              Phase 3: copy into tb_affected_isoforms + flag domain junctions
+  backfill_exons.py           Same pipeline for tb_ensembl_transcripts / tb_ensembl_affected
   run_hmmer.py                HMMER3 domain boundary scan using pyhmmer
 ```
 
