@@ -91,10 +91,20 @@ def _build_ensg_map(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
 # Step 2+3: fetch transcripts and sequences
 # ---------------------------------------------------------------------------
 
-def _existing_sequences(conn: sqlite3.Connection) -> set[str]:
-    """Return set of all sequences already in tb_isoforms (for duplicate detection)."""
-    rows = conn.execute(f"SELECT sequence FROM {_ISOFORM_TABLE} WHERE sequence IS NOT NULL").fetchall()
-    return {r[0] for r in rows}
+def _existing_uniprot_sequences(conn: sqlite3.Connection) -> dict[str, str]:
+    """Return {sequence: isoform_id} for all sequences in tb_isoforms."""
+    rows = conn.execute(
+        f"SELECT sequence, isoform_id FROM {_ISOFORM_TABLE} WHERE sequence IS NOT NULL"
+    ).fetchall()
+    return {seq: iso_id for seq, iso_id in rows}
+
+
+def _existing_enst_sequences(conn: sqlite3.Connection) -> dict[str, str]:
+    """Return {sequence: enst_id} for all sequences already in tb_ensembl_transcripts."""
+    rows = conn.execute(
+        f"SELECT sequence, enst_id FROM {_TRANSCRIPT_TABLE} WHERE sequence IS NOT NULL"
+    ).fetchall()
+    return {seq: enst_id for seq, enst_id in rows}
 
 
 def _existing_enst_ids(conn: sqlite3.Connection) -> set[str]:
@@ -102,17 +112,11 @@ def _existing_enst_ids(conn: sqlite3.Connection) -> set[str]:
     return {r[0] for r in rows}
 
 
-def _isoform_id_for_sequence(conn: sqlite3.Connection, seq: str) -> str | None:
-    row = conn.execute(
-        f"SELECT isoform_id FROM {_ISOFORM_TABLE} WHERE sequence=? LIMIT 1", (seq,)
-    ).fetchone()
-    return row[0] if row else None
-
-
 def collect_transcripts(
     conn: sqlite3.Connection,
     ensg_map: dict[str, tuple[str, str]],
-    existing_seqs: set[str],
+    uniprot_seqs: dict[str, str],
+    enst_seqs: dict[str, str],
     existing_ensts: set[str],
 ) -> int:
     """Fetch all transcripts and upsert into tb_ensembl_transcripts. Returns insert count."""
@@ -125,37 +129,37 @@ def collect_transcripts(
             logger.debug("No transcripts returned for %s (ENSG %s)", uid, ensg)
             continue
 
-        # Fetch gene_name from proteins table
         row = conn.execute("SELECT gene_name FROM tb_proteins WHERE uniprot_id=?", (uid,)).fetchone()
         gene_name = row[0] if row else None
 
         for tx in transcripts:
             enst = tx["enst_id"]
             if enst in existing_ensts:
-                continue   # already collected
+                continue
 
             seq = protein_sequence(enst)
             if not seq:
                 continue
 
-            seq_len    = len(seq)
-            is_frag    = 1 if seq_len < _MIN_SEQ_LEN else 0
-            dup_iso_id = _isoform_id_for_sequence(conn, seq) if seq in existing_seqs else None
+            seq_len     = len(seq)
+            is_frag     = 1 if seq_len < _MIN_SEQ_LEN else 0
+            dup_iso_id  = uniprot_seqs.get(seq)          # UniProt isoform duplicate
+            dup_enst_id = enst_seqs.get(seq) if not dup_iso_id else None  # Ensembl internal duplicate
 
             conn.execute(f"""
                 INSERT OR IGNORE INTO {_TRANSCRIPT_TABLE}
                     (enst_id, ensg_id, ensp_id, uniprot_id, gene_name,
                      sequence, sequence_length, is_fragment, is_mane_select,
-                     biotype, duplicate_isoform_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     biotype, duplicate_isoform_id, duplicate_enst_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 enst, ensg, tx.get("ensp_id"), uid, gene_name,
                 seq, seq_len, is_frag, tx["is_mane_select"],
-                tx["biotype"], dup_iso_id,
+                tx["biotype"], dup_iso_id, dup_enst_id,
             ))
             existing_ensts.add(enst)
-            if seq not in existing_seqs:
-                existing_seqs.add(seq)
+            if seq not in uniprot_seqs and seq not in enst_seqs:
+                enst_seqs[seq] = enst  # register as representative for subsequent duplicates
             inserted += 1
 
         conn.commit()
@@ -195,6 +199,7 @@ def run_alignment_analysis(conn: sqlite3.Connection) -> tuple[int, int, int]:
           ON  can.uniprot_id   = et.uniprot_id
           AND can.is_canonical = 1
         WHERE et.duplicate_isoform_id IS NULL
+          AND et.duplicate_enst_id IS NULL
           AND et.is_fragment = 0
           AND can.tim_barrel_sequence IS NOT NULL
     """).fetchall()
@@ -314,17 +319,20 @@ def main() -> None:
         logger.info("--limit %d: processing %d proteins", args.limit, len(ensg_map))
 
     # Step 2+3: collect transcripts
-    existing_seqs  = _existing_sequences(conn)
+    uniprot_seqs   = _existing_uniprot_sequences(conn)
+    enst_seqs      = _existing_enst_sequences(conn)
     existing_ensts = _existing_enst_ids(conn)
-    logger.info("Collecting Ensembl transcripts (%d existing UniProt sequences cached)",
-                len(existing_seqs))
-    inserted = collect_transcripts(conn, ensg_map, existing_seqs, existing_ensts)
+    logger.info("Collecting Ensembl transcripts (%d UniProt sequences, %d Ensembl sequences cached)",
+                len(uniprot_seqs), len(enst_seqs))
+    inserted = collect_transcripts(conn, ensg_map, uniprot_seqs, enst_seqs, existing_ensts)
 
     # Summary so far
-    total_enst  = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE}").fetchone()[0]
-    dup_count   = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE duplicate_isoform_id IS NOT NULL").fetchone()[0]
-    frag_count  = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE is_fragment=1").fetchone()[0]
-    novel_count = total_enst - dup_count
+    total_enst      = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE}").fetchone()[0]
+    dup_uniprot     = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE duplicate_isoform_id IS NOT NULL").fetchone()[0]
+    dup_enst        = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE duplicate_enst_id IS NOT NULL").fetchone()[0]
+    dup_count       = dup_uniprot + dup_enst
+    frag_count      = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE is_fragment=1 AND duplicate_isoform_id IS NULL AND duplicate_enst_id IS NULL").fetchone()[0]
+    novel_count     = total_enst - dup_count
 
     print(f"\n{'='*60}")
     print(f"  Ensembl transcript collection")
@@ -332,9 +340,10 @@ def main() -> None:
     print(f"  Proteins processed            : {len(ensg_map)}")
     print(f"  Transcripts inserted          : {inserted}")
     print(f"  Total in {_TRANSCRIPT_TABLE:<20}: {total_enst}")
-    print(f"  Duplicates (same seq as UniProt): {dup_count}")
-    print(f"  Fragments (< {_MIN_SEQ_LEN} aa)          : {frag_count}")
-    print(f"  Novel transcripts             : {novel_count}")
+    print(f"  Duplicates — same seq as UniProt: {dup_uniprot}")
+    print(f"  Duplicates — internal Ensembl   : {dup_enst}")
+    print(f"  Fragments (< {_MIN_SEQ_LEN} aa, novel)    : {frag_count}")
+    print(f"  Novel unique transcripts        : {novel_count}")
 
     if args.skip_analysis:
         print(f"\n  --skip-analysis: alignment step skipped")

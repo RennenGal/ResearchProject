@@ -48,24 +48,25 @@ Beta propeller is only collected for Homo sapiens. Mouse and rat are supported f
 |---|---|
 | Proteins with Ensembl mapping | 799 |
 | Transcripts collected | 2,714 |
-| Duplicates (sequence already in UniProt isoforms) | 1,490 |
-| Fragments (< 200 aa) | 355 |
-| Novel transcripts | 1,224 |
-| **AS-affected novel transcripts** | **391** |
+| Duplicates — same sequence as UniProt isoform | 1,490 |
+| Duplicates — internal Ensembl (same sequence, different ENST) | 127 |
+| Novel unique transcripts | 1,097 |
+| Fragments (< 200 aa, novel) | 411 |
+| **AS-affected novel transcripts** | **359** |
 
 ### Exon boundary analysis (AS-affected Ensembl transcripts)
 
 | | Count |
 |---|---|
-| AS-affected transcripts with exon data | 391 |
-| With ≥1 exon junction inside domain | 391 (100%) |
+| AS-affected transcripts with exon data | 359 |
+| With ≥1 exon junction inside domain | 359 (100%) |
 | Average exon junctions inside domain | 7.1 |
-| Transcripts with exactly 1 junction in domain | 19 |
+| Transcripts with exactly 1 junction in domain | ~19 |
 
-All 391 AS-affected transcripts have at least one exon junction inside the TIM barrel domain
+All 359 AS-affected transcripts have at least one exon junction inside the TIM barrel domain
 (average 7.1 per transcript). This is expected given domain lengths of ~280 aa and 8–15 coding
-exon boundaries per gene. Transcripts with fewer intra-domain junctions (e.g. exactly 1) are
-candidates for highly targeted splice events.
+exon boundaries per gene. Transcripts with fewer intra-domain junctions are candidates for
+highly targeted splice events.
 
 Results stored in `tb_ensembl_transcripts` and `tb_ensembl_affected` (separate from UniProt isoform tables).
 
@@ -138,6 +139,7 @@ tb_ensembl_transcripts
   is_mane_select,          -- 1 if canonical Ensembl transcript
   biotype,
   duplicate_isoform_id,    -- isoform_id if sequence matches an existing UniProt isoform
+  duplicate_enst_id,       -- enst_id of representative if sequence matches another Ensembl transcript
   exon_annotations         -- JSON list of 1-based protein positions of each exon's last AA
                            --   (all coding exons except the final one; ceiling(cumulative_cds/3))
 

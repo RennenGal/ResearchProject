@@ -57,6 +57,9 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
     if "exon_annotations" not in existing_enst:
         conn.execute(f"ALTER TABLE {_TRANSCRIPT_TABLE} ADD COLUMN exon_annotations TEXT")
         logger.info("Added exon_annotations column to %s", _TRANSCRIPT_TABLE)
+    if "duplicate_enst_id" not in existing_enst:
+        conn.execute(f"ALTER TABLE {_TRANSCRIPT_TABLE} ADD COLUMN duplicate_enst_id TEXT")
+        logger.info("Added duplicate_enst_id column to %s", _TRANSCRIPT_TABLE)
 
     existing_aff = {r[1] for r in conn.execute(f"PRAGMA table_info({_AFFECTED_TABLE})")}
     if "exon_boundary_in_domain" not in existing_aff:

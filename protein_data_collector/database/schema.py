@@ -357,6 +357,7 @@ CREATE TABLE IF NOT EXISTS tb_ensembl_transcripts (
     is_mane_select       INTEGER NOT NULL DEFAULT 0,
     biotype              TEXT,
     duplicate_isoform_id TEXT,
+    duplicate_enst_id    TEXT,
     exon_annotations     TEXT,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
