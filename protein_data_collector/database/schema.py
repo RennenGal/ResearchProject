@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS tb_isoforms (
     sequence            TEXT NOT NULL,
     sequence_length     INTEGER NOT NULL,
     is_fragment         INTEGER NOT NULL DEFAULT 0,
+    gene_name           TEXT,
     exon_count          INTEGER,
     exon_annotations    TEXT,
     splice_variants     TEXT,
@@ -81,6 +82,7 @@ CREATE TABLE IF NOT EXISTS tb_affected_isoforms (
     sequence                  TEXT NOT NULL,
     sequence_length           INTEGER NOT NULL,
     is_fragment               INTEGER NOT NULL DEFAULT 0,
+    gene_name                 TEXT,
     exon_count                INTEGER,
     exon_annotations          TEXT,
     splice_variants           TEXT,
@@ -369,6 +371,7 @@ CREATE TABLE IF NOT EXISTS tb_ensembl_affected (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,
     enst_id                   TEXT NOT NULL,
     uniprot_id                TEXT NOT NULL,
+    gene_name                 TEXT,
     domain_location           TEXT,
     domain_sequence           TEXT,
     canonical_domain_location TEXT,
@@ -389,6 +392,30 @@ CREATE INDEX IF NOT EXISTS idx_tb_enst_dup       ON tb_ensembl_transcripts(dupli
 CREATE INDEX IF NOT EXISTS idx_tb_enst_aff_enst  ON tb_ensembl_affected(enst_id);
 CREATE INDEX IF NOT EXISTS idx_tb_enst_aff_uid   ON tb_ensembl_affected(uniprot_id);
 CREATE INDEX IF NOT EXISTS idx_tb_enst_aff_ident ON tb_ensembl_affected(alignment_identity);
+
+-- ============================================================
+-- TIM barrel canonical analysis — Homo sapiens
+-- One row per canonical protein, used for motif annotation.
+-- exon_annotations: [{exon, start, end}] in full-sequence coords (1-based, inclusive)
+-- motif_annotations: [{motif, start, end, beta_start, beta_end, alpha_start, alpha_end}] x8
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS tb_canonical_analysis (
+    uniprot_id          TEXT PRIMARY KEY,
+    gene_name           TEXT,
+    sequence            TEXT NOT NULL,
+    domain_start        INTEGER,
+    domain_end          INTEGER,
+    domain_sequence     TEXT,
+    exon_annotations    TEXT,
+    motif_annotations   TEXT,
+    dssp_source         TEXT,
+    hmmer_source        TEXT,
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tb_can_gene ON tb_canonical_analysis(gene_name);
 """
 
 

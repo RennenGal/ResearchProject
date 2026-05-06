@@ -19,6 +19,8 @@ _UNIPROT_FIELDS = ",".join([
     "xref_interpro", "xref_ensembl", "xref_alphafolddb",
 ])
 
+_GENE_NAME_BATCH = 100  # UniProt limits OR conditions to 100 per search query
+
 
 class UniProtClient:
     """Fetch protein and isoform data from the UniProt REST API."""
@@ -42,6 +44,47 @@ class UniProtClient:
         if data:
             return data.get("sequence", {}).get("value")
         return None
+
+    def batch_gene_names(self, uniprot_ids: List[str]) -> Dict[str, Optional[str]]:
+        """
+        Fetch the primary gene name for each UniProt accession in *uniprot_ids*.
+
+        Returns {uniprot_id: gene_name_or_None}.  Proteins not found in UniProt
+        are mapped to None.  Requests are chunked to stay within URL length limits.
+        """
+        result: Dict[str, Optional[str]] = {uid: None for uid in uniprot_ids}
+        search_url = f"{self.cfg.uniprot_base_url}/search"
+
+        for i in range(0, len(uniprot_ids), _GENE_NAME_BATCH):
+            chunk = uniprot_ids[i:i + _GENE_NAME_BATCH]
+            query = " OR ".join(f"accession:{uid}" for uid in chunk)
+            params = {
+                "query": query,
+                "fields": "accession,gene_names",
+                "format": "json",
+                "size": len(chunk),
+            }
+            try:
+                resp = self.session.get(search_url, params=params, timeout=self.cfg.request_timeout)
+                time.sleep(self.cfg.request_delay)
+            except requests.exceptions.RequestException as e:
+                logger.warning("Network error fetching gene names (chunk %d): %s", i, e)
+                continue
+
+            if not resp.ok:
+                logger.warning("UniProt search returned %d for gene name chunk %d", resp.status_code, i)
+                continue
+
+            for entry in resp.json().get("results", []):
+                uid = entry.get("primaryAccession")
+                if uid and uid in result:
+                    genes = entry.get("genes", [])
+                    if genes and genes[0].get("geneName"):
+                        result[uid] = genes[0]["geneName"]["value"]
+
+            logger.debug("Gene name batch %d/%d done", min(i + _GENE_NAME_BATCH, len(uniprot_ids)), len(uniprot_ids))
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal

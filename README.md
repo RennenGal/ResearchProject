@@ -25,6 +25,18 @@ local SQLite database. Supports multiple domain families and organisms.
 | Min exon junctions inside domain | 2 |
 | Avg exon junctions inside domain | 7.5 |
 
+### Structural annotation (`tb_canonical_analysis`, 810 canonical non-fragment proteins)
+
+Three complementary methods annotate the 8 β-α repeat units of each TIM barrel domain.
+
+| Method | Tool | Coverage | Full 8-motif rate |
+|---|---|---|---|
+| AlphaFold DSSP | pydssp on AF2 structure | 764 / 810 | 386 / 764 (51%) |
+| Per-family HMM | pyhmmer jackhmmer / phmmer | 767 / 810 | — (hit rate metric) |
+| Experimental PDB | X-ray / EM ≤ 3.0 Å via PDBe | 86 / 810 | 63 / 86 (73%) |
+
+Agreement between AlphaFold DSSP and experimental PDB structures: **85%** of proteins assigned 8 motifs by AlphaFold are confirmed by an independent crystal structure (median resolution 1.90 Å).
+
 ### Beta propeller (Homo sapiens)
 
 | | Count |
@@ -162,6 +174,22 @@ tb_ensembl_affected
   exon_boundaries_in_domain_count   -- number of exon junctions inside the domain
 ```
 
+### Canonical analysis (structural annotation)
+
+```
+tb_canonical_analysis
+  uniprot_id (PK), gene_name,
+  sequence, domain_start, domain_end, domain_sequence,
+  exon_annotations,           -- [{exon, start, end}] 1-based inclusive
+  motif_annotations,          -- [{motif, start, end, beta_start, beta_end,
+                              --   alpha_start, alpha_end}] from AlphaFold DSSP
+  dssp_source,                -- 'alphafold' | 'not_found' | 'dssp_failed'
+  hmmer_annotations,          -- JSON hit details from per-family HMM
+  hmmer_source,               -- 'family_jackhmmer' | 'family_phmmer' | 'no_profile'
+  pdb_motif_annotations,      -- [{motif, ...}] from experimental PDB (same format)
+  pdb_source                  -- '<PDBID>_<chain>_<resolution>A' | 'no_structure' | ...
+```
+
 DB triggers (`trg_block_redundant_tb`, `trg_block_redundant_bp`, etc.) prevent inserting
 isoforms for redundant proteins.
 
@@ -257,6 +285,73 @@ Results are stored in `tb_ensembl_transcripts` (with `exon_annotations`) and
 
 ---
 
+## Structural motif annotation pipeline
+
+After data collection, a five-step pipeline annotates the (βα)₈ repeat units for each canonical
+TIM barrel protein and cross-validates the assignments.  Run the steps in order.
+
+### Step 1 — Populate gene names
+```bash
+python scripts/fetch_gene_names.py
+```
+Fetches primary gene names from UniProt (batch mode) and propagates them to all tables that
+have a `gene_name` column: `tb_isoforms`, `tb_affected_isoforms`, `tb_ensembl_transcripts`,
+`tb_ensembl_affected`.
+
+### Step 2 — Build canonical analysis table
+```bash
+python scripts/build_canonical_analysis.py
+python scripts/build_canonical_analysis.py --rebuild   # drop and repopulate
+```
+Creates `tb_canonical_analysis` with one row per canonical, non-fragment, non-redundant human
+TIM barrel protein.  Populates: `uniprot_id`, `gene_name`, `sequence`, `domain_start`,
+`domain_end`, `domain_sequence`, `exon_annotations` (reformatted to `[{exon, start, end}]`).
+
+### Step 3 — Annotate β-α motifs (AlphaFold + DSSP)
+```bash
+python scripts/annotate_motifs.py
+python scripts/annotate_motifs.py --rerun        # overwrite existing annotations
+python scripts/annotate_motifs.py --limit 50     # test run
+```
+Downloads AlphaFold F1 structures (cached in `data/alphafold_pdb/`), runs pydssp, and
+identifies up to 8 β-α motifs within the stored domain region.  Stores results in
+`motif_annotations` (JSON) and `dssp_source`.
+
+Motif format:
+```json
+[{"motif": 1, "start": 14, "end": 37,
+  "beta_start": 14, "beta_end": 20,
+  "alpha_start": 27, "alpha_end": 37}, ...]
+```
+All positions 1-based, inclusive, in full-protein coordinates.
+
+### Step 4 — Cross-validate with per-family HMMs
+```bash
+python scripts/cross_validate_hmmer.py
+python scripts/cross_validate_hmmer.py --evalue 1e-3
+```
+Builds one HMM per TIM barrel family using pyhmmer:
+- **≥ 5 complete (8-motif) proteins** → jackhmmer (iterative, up to 5 rounds)
+- **1–4 complete proteins** → phmmer (single-sequence profile)
+- **0 complete proteins** → `no_profile`
+
+Stores results in `hmmer_annotations` (JSON) and `hmmer_source`.
+
+### Step 5 — Validate with experimental PDB structures
+```bash
+python scripts/validate_pdb_experimental.py
+python scripts/validate_pdb_experimental.py --resolution 2.5   # stricter cutoff
+python scripts/validate_pdb_experimental.py --rerun
+```
+Queries PDBe `best_structures` API to find the highest-quality X-ray or EM structure
+(≤ 3.0 Å by default) that covers the TIM barrel domain.  Downloads from RCSB
+(cached in `data/pdb_experimental/`), runs pydssp on the filtered chain, and maps
+positions to UniProt coordinates via `offset = unp_start − pdb_start`.
+
+Stores results in `pdb_motif_annotations` and `pdb_source` (e.g. `3IAR_A_1.52A`).
+
+---
+
 ## Querying the database
 
 ```python
@@ -305,9 +400,9 @@ Test files:
    Mapping their domain boundaries requires projecting splice variant coordinates onto the
    altered sequence — planned as a future analysis step.
 
-2. **`exon_annotations` is null for all isoforms.**  
-   Mapping genomic exon coordinates to protein coordinates requires the Ensembl REST API.
-   Planned as a future collection step.
+2. **Motif-level disruption not yet computed for AS-affected isoforms.**  
+   `tb_affected_isoforms` and `tb_ensembl_affected` identify whether splicing disrupts the
+   domain, but not *which* of the 8 β-α motif units is affected. See `TODO.md`.
 
 ---
 
@@ -343,17 +438,25 @@ protein_data_collector/
   retry.py        tenacity decorator
 
 scripts/
-  collect.py                  Data collection entry point (--domain, --organism)
-  build_affected_isoforms.py  AS-affected isoform detection and storage
-  collect_ensembl.py          Ensembl transcript expansion for TIM barrel (Homo sapiens)
-  backfill_isoform_exons.py   Backfill exon junction data for tb_isoforms (UniProt isoforms)
-                              Phase 1: fetch canonical boundaries from Ensembl via ENST IDs
-                              Phase 2: derive alternative boundaries via VSP coordinate mapping
-                                (sequence-matching on unchanged flanking segments; handles both
-                                deletions and substitutions without re-fetching)
-                              Phase 3: copy into tb_affected_isoforms + flag domain junctions
-  backfill_exons.py           Same pipeline for tb_ensembl_transcripts / tb_ensembl_affected
-  run_hmmer.py                HMMER3 domain boundary scan using pyhmmer
+  collect.py                    Data collection entry point (--domain, --organism)
+  build_affected_isoforms.py    AS-affected isoform detection and storage
+  collect_ensembl.py            Ensembl transcript expansion for TIM barrel (Homo sapiens)
+  backfill_isoform_exons.py     Backfill exon junction data for tb_isoforms (UniProt isoforms)
+                                Phase 1: fetch canonical boundaries from Ensembl via ENST IDs
+                                Phase 2: derive alternative boundaries via VSP coordinate mapping
+                                  (sequence-matching on unchanged flanking segments; handles both
+                                  deletions and substitutions without re-fetching)
+                                Phase 3: copy into tb_affected_isoforms + flag domain junctions
+  backfill_exons.py             Same pipeline for tb_ensembl_transcripts / tb_ensembl_affected
+  run_hmmer.py                  HMMER3 domain boundary scan using pyhmmer
+  fetch_gene_names.py           Batch-fetch gene names from UniProt; propagate to all tables
+  build_canonical_analysis.py   Build tb_canonical_analysis (one row per canonical protein)
+  annotate_motifs.py            AlphaFold + pydssp motif annotation → motif_annotations
+  cross_validate_hmmer.py       Per-family HMM cross-validation → hmmer_annotations
+  validate_pdb_experimental.py  Experimental PDB validation via PDBe + RCSB → pdb_motif_annotations
+
+protein_data_collector/analysis/
+  motif_annotator.py            identify_ba_motifs(): β-α repeat detection from SS array
 ```
 
 ### Domain + organism parameterisation
