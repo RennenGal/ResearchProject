@@ -55,7 +55,36 @@
   Run `build_canonical_analysis.py`, `annotate_motifs.py`, and validation scripts
   for `tb_proteins_mus_musculus` and `tb_proteins_rattus_norvegicus`.
 
+- [ ] **Write motif-disruption mapping script**
+  Join `tb_canonical_analysis.motif_annotations` with `tb_affected_isoforms.domain_location`
+  and the VSP splice variant coordinates to determine which of the 8 β-α units each AS event
+  overlaps. `domain_location` already exists in `tb_affected_isoforms`; the missing piece is
+  the overlap logic and `disrupted_motifs` storage. Same for `tb_ensembl_affected`.
+
+- [ ] **Investigate partial barrels (7-motif proteins)**
+  116 proteins show 7 DSSP motifs; HMMs confirm ~85% are genuine TIM barrels. The missing
+  motif is likely a domain boundary artefact (InterPro clips the N- or C-terminal strand).
+  Try expanding `domain_start`/`domain_end` by up to 15 residues and re-running
+  `identify_ba_motifs()` to see how many recover a full 8th motif.
+
+- [ ] **Export annotated dataset to CSV**
+  Write an export script (or QueryEngine method) that joins `tb_canonical_analysis`,
+  `tb_proteins`, `tb_affected_isoforms`, and `tb_ensembl_affected` into a tidy flat CSV
+  suitable for R / pandas analysis and sharing with supervisors.
+
 ### Infrastructure
+
+- [ ] **Fix schema.py to include all runtime-added columns**
+  `hmmer_annotations`, `hmmer_source`, `pdb_motif_annotations`, and `pdb_source` are
+  added via `ALTER TABLE` inside script `ensure_columns()` calls but are absent from the
+  `CREATE TABLE` DDL in `schema.py`. A fresh `init_db()` produces a schema that diverges
+  from the live DB, breaking reruns from scratch.
+
+- [ ] **Add sanity-check for PDB coordinate mapping**
+  The `validate_pdb_experimental.py` offset logic (`min_uni + shift`) was verified on
+  P00813 but not systematically. Write a check that, for all 86 annotated proteins,
+  confirms that the first and last motif positions fall within `[domain_start, domain_end]`
+  and flag any that don't (possible insertion-code or non-standard chain numbering issues).
 
 - [ ] **Add tests for motif annotator**
   Unit tests for `identify_ba_motifs()` covering: clean 8-motif barrel, partial
