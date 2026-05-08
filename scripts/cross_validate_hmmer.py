@@ -64,10 +64,10 @@ _DEFAULT_EVALUE  = 1e-3
 # ---------------------------------------------------------------------------
 
 def ensure_columns(conn: sqlite3.Connection) -> None:
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(tb_canonical_analysis)")}
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(canonical_analysis)")}
     if "hmmer_annotations" not in cols:
-        conn.execute("ALTER TABLE tb_canonical_analysis ADD COLUMN hmmer_annotations TEXT")
-        logger.info("Added hmmer_annotations to tb_canonical_analysis")
+        conn.execute("ALTER TABLE canonical_analysis ADD COLUMN hmmer_annotations TEXT")
+        logger.info("Added hmmer_annotations to canonical_analysis")
     conn.commit()
 
 
@@ -97,9 +97,9 @@ def load_families(conn: sqlite3.Connection) -> dict[str, dict]:
         SELECT ca.uniprot_id, ca.domain_start, ca.domain_end, ca.domain_sequence,
                json_array_length(ca.motif_annotations) as n_motifs,
                p.tim_barrel_accession, e.name as entry_name
-        FROM tb_canonical_analysis ca
-        JOIN tb_proteins p ON p.uniprot_id = ca.uniprot_id
-        JOIN tb_entries e ON e.accession = p.tim_barrel_accession
+        FROM canonical_analysis ca
+        JOIN proteins p ON p.uniprot_id = ca.uniprot_id
+        JOIN entries e ON e.accession = p.tim_barrel_accession
         WHERE ca.domain_sequence IS NOT NULL
         ORDER BY p.tim_barrel_accession, ca.uniprot_id
     """).fetchall()
@@ -223,7 +223,7 @@ def store_family_results(
         ann["family"]  = accession
         ann["profile"] = seed_uid
         conn.execute("""
-            UPDATE tb_canonical_analysis
+            UPDATE canonical_analysis
             SET hmmer_annotations=?, hmmer_source=?
             WHERE uniprot_id=?
         """, (json.dumps(ann), source, uid))
@@ -231,15 +231,15 @@ def store_family_results(
     # Proteins in this family with no hit at all (not in hmmsearch output)
     all_uids = {uid for uid in search_res}
     family_uids = conn.execute("""
-        SELECT ca.uniprot_id FROM tb_canonical_analysis ca
-        JOIN tb_proteins p ON p.uniprot_id = ca.uniprot_id
+        SELECT ca.uniprot_id FROM canonical_analysis ca
+        JOIN proteins p ON p.uniprot_id = ca.uniprot_id
         WHERE p.tim_barrel_accession=? AND ca.domain_sequence IS NOT NULL
           AND ca.hmmer_annotations IS NULL
     """, (accession,)).fetchall()
     for (uid,) in family_uids:
         if uid not in all_uids:
             conn.execute("""
-                UPDATE tb_canonical_analysis
+                UPDATE canonical_analysis
                 SET hmmer_annotations=?, hmmer_source=?
                 WHERE uniprot_id=?
             """, (json.dumps({"hit": False, "family": accession, "profile": seed_uid}), source, uid))
@@ -258,7 +258,7 @@ def print_comparison(conn: sqlite3.Connection) -> None:
             json_extract(hmmer_annotations, '$.hit')      AS hmmer_hit,
             hmmer_source,
             json_extract(hmmer_annotations, '$.score')    AS score
-        FROM tb_canonical_analysis
+        FROM canonical_analysis
         WHERE hmmer_annotations IS NOT NULL
           AND hmmer_source != 'no_profile'
     """).fetchall()
@@ -287,11 +287,11 @@ def print_comparison(conn: sqlite3.Connection) -> None:
         print(f"  {label:>12}  {b['total']:>9}  {b['hit']:>9}  {pct:>8.0f}%  {med:>9.1f}")
     print(f"{'='*72}")
 
-    total   = conn.execute("SELECT COUNT(*) FROM tb_canonical_analysis WHERE hmmer_source != 'no_profile'").fetchone()[0]
-    hit     = conn.execute("SELECT COUNT(*) FROM tb_canonical_analysis WHERE json_extract(hmmer_annotations,'$.hit')=1").fetchone()[0]
-    no_prof = conn.execute("SELECT COUNT(*) FROM tb_canonical_analysis WHERE hmmer_source='no_profile'").fetchone()[0]
-    full8   = conn.execute("SELECT COUNT(*) FROM tb_canonical_analysis WHERE json_array_length(motif_annotations)=8 AND json_extract(hmmer_annotations,'$.hit')=1").fetchone()[0]
-    full8_t = conn.execute("SELECT COUNT(*) FROM tb_canonical_analysis WHERE json_array_length(motif_annotations)=8 AND hmmer_source != 'no_profile'").fetchone()[0]
+    total   = conn.execute("SELECT COUNT(*) FROM canonical_analysis WHERE hmmer_source != 'no_profile'").fetchone()[0]
+    hit     = conn.execute("SELECT COUNT(*) FROM canonical_analysis WHERE json_extract(hmmer_annotations,'$.hit')=1").fetchone()[0]
+    no_prof = conn.execute("SELECT COUNT(*) FROM canonical_analysis WHERE hmmer_source='no_profile'").fetchone()[0]
+    full8   = conn.execute("SELECT COUNT(*) FROM canonical_analysis WHERE json_array_length(motif_annotations)=8 AND json_extract(hmmer_annotations,'$.hit')=1").fetchone()[0]
+    full8_t = conn.execute("SELECT COUNT(*) FROM canonical_analysis WHERE json_array_length(motif_annotations)=8 AND hmmer_source != 'no_profile'").fetchone()[0]
     print(f"\n  Proteins with a family HMM       : {total}")
     print(f"  Proteins without a profile        : {no_prof}")
     print(f"  Significant HMM hits              : {hit} / {total}")
@@ -321,7 +321,7 @@ def main() -> None:
     ensure_columns(conn)
 
     # Reset previous results
-    conn.execute("UPDATE tb_canonical_analysis SET hmmer_annotations=NULL, hmmer_source=NULL")
+    conn.execute("UPDATE canonical_analysis SET hmmer_annotations=NULL, hmmer_source=NULL")
     conn.commit()
 
     families = load_families(conn)
@@ -337,7 +337,7 @@ def main() -> None:
                         accession, name_short, n_all)
             for uid, ds, de, _ in fam["all"]:
                 conn.execute("""
-                    UPDATE tb_canonical_analysis
+                    UPDATE canonical_analysis
                     SET hmmer_annotations=?, hmmer_source='no_profile'
                     WHERE uniprot_id=?
                 """, (json.dumps({"hit": False, "family": accession}), uid))
@@ -361,7 +361,7 @@ def main() -> None:
             logger.warning("    HMM build failed — marking as no_profile")
             for uid, _, _, _ in fam["all"]:
                 conn.execute("""
-                    UPDATE tb_canonical_analysis
+                    UPDATE canonical_analysis
                     SET hmmer_annotations=?, hmmer_source='no_profile'
                     WHERE uniprot_id=?
                 """, (json.dumps({"hit": False, "family": accession}), uid))

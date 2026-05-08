@@ -1,80 +1,105 @@
 """
-TIM barrel local alignment analysis.
+TIM barrel AS-affected isoform detection.
 
-For each alternative (non-canonical), non-fragment isoform, slides the canonical
-TIM barrel sequence along the isoform sequence using ungapped alignment
-(match = 1, mismatch = 0) to find the best-matching window.
+Primary method: VSP-based overlap
+----------------------------------
+Each alternative isoform in UniProt carries one or more VSP (Variable
+Sequence Position) feature annotations that describe exactly which residues
+of the canonical sequence are changed.  An isoform is "domain-affecting" when
+at least one VSP overlaps (by any number of residues) with the canonical TIM
+barrel domain [domain_start, domain_end].
 
-Insertion detection:
-    For isoforms that score >= 95% on the window alignment (TIM barrel apparently
-    identical), the conserved flanking sequences (20 aa on each side of the canonical
-    TIM barrel) are searched in the alternative isoform.  If both flanks are found
-    exactly, the span between them measures the actual TIM barrel region length in the
-    alternative.  A span longer than tb_len means extra sequence was inserted into the
-    TIM barrel region; identity is recomputed as window_score / span_len.
+This is more principled than a sliding-window alignment because:
+  - It uses the explicitly annotated splice boundaries rather than inferring
+    them from sequence similarity.
+  - It detects small loop changes (~3 aa) that a similarity threshold would
+    silently exclude.
+  - It does not require arbitrary identity thresholds.
 
-Inclusion thresholds:
-    identity >= 12.5%   — at least one beta-alpha motif is present
-    identity <  95%     — meaningful AS effect on the TIM barrel
+Overlap stored per affected VSP:
+  feature_id, can_start, can_end (canonical coords),
+  overlap_start, overlap_end (intersection with domain),
+  overlap_residues, overlap_fraction (overlap_residues / domain_len)
+
+Fallback: sliding-window alignment
+------------------------------------
+For the 6 isoforms whose splice_variants list is empty (no VSP data), the
+original ungapped sliding-window is used with thresholds 12.5% < id < 95%.
 """
 
 import json
 import logging
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Thresholds (fraction, not percent)
-_IDENTITY_MIN = 0.125   # 12.5% — one beta-alpha motif out of 8
-_IDENTITY_MAX = 0.95    # 95%   — meaningful AS effect cutoff
-
-_FLANK_LEN = 20         # aa of conserved context used for span detection
+# Sliding-window fallback thresholds (fraction)
+_IDENTITY_MIN = 0.125
+_IDENTITY_MAX = 0.95
+_FLANK_LEN    = 20
 
 
 # ---------------------------------------------------------------------------
-# Alignment helpers
+# VSP overlap detection
+# ---------------------------------------------------------------------------
+
+def _vsp_domain_events(
+    vsps: list[dict],
+    domain_start: int,
+    domain_end: int,
+) -> list[dict]:
+    """
+    Return the subset of VSPs whose canonical coordinates overlap with
+    [domain_start, domain_end].  Each returned dict includes precomputed
+    overlap metrics.
+    """
+    domain_len = domain_end - domain_start + 1
+    overlapping = []
+    for v in vsps:
+        vs = v["location"]["start"]["value"]
+        ve = v["location"]["end"]["value"]
+        if vs <= domain_end and ve >= domain_start:
+            ov_start = max(vs, domain_start)
+            ov_end   = min(ve, domain_end)
+            ov_res   = ov_end - ov_start + 1
+            overlapping.append({
+                "feature_id":       v["featureId"],
+                "can_start":        vs,
+                "can_end":          ve,
+                "overlap_start":    ov_start,
+                "overlap_end":      ov_end,
+                "overlap_residues": ov_res,
+                "overlap_fraction": round(ov_res / domain_len, 3),
+            })
+    return overlapping
+
+
+# ---------------------------------------------------------------------------
+# Sliding-window helpers (fallback + domain location in alt isoform)
 # ---------------------------------------------------------------------------
 
 def sliding_window_align(tim_barrel_seq: str, isoform_seq: str) -> tuple[int, int, int]:
     """
-    Ungapped local alignment of ``tim_barrel_seq`` against ``isoform_seq``.
-
-    Slides a window of len(tim_barrel_seq) along isoform_seq and scores each
-    position with match=1, mismatch=0.
-
-    Returns
-    -------
-    (best_score, start_1based, end_1based)
-        Coordinates are 1-based, inclusive, in isoform space.
-        Returns (0, 0, 0) if isoform_seq is shorter than tim_barrel_seq.
+    Ungapped local alignment.  Returns (best_score, start_1based, end_1based).
+    Returns (0, 0, 0) if isoform_seq is shorter than tim_barrel_seq.
     """
     L = len(tim_barrel_seq)
     n = len(isoform_seq)
-
     if n < L:
         return 0, 0, 0
-
     best_score = -1
     best_start = 0
-
     for i in range(n - L + 1):
-        score = sum(
-            1 for j in range(L) if tim_barrel_seq[j] == isoform_seq[i + j]
-        )
+        score = sum(1 for j in range(L) if tim_barrel_seq[j] == isoform_seq[i + j])
         if score > best_score:
             best_score = score
             best_start = i
-
-    return best_score, best_start + 1, best_start + L  # 1-based, inclusive
+    return best_score, best_start + 1, best_start + L
 
 
 def _find_exact(query: str, target: str) -> int:
-    """
-    Return the 0-based start position of the first exact occurrence of
-    ``query`` in ``target``, or -1 if not found.
-    """
     if not query or len(query) > len(target):
         return -1
     for i in range(len(target) - len(query) + 1):
@@ -85,70 +110,83 @@ def _find_exact(query: str, target: str) -> int:
 
 def find_tim_barrel_span(
     canonical_seq: str,
-    can_tb_start: int,   # 1-based
-    can_tb_end: int,     # 1-based
+    can_tb_start: int,
+    can_tb_end: int,
     alt_seq: str,
     flank_len: int = _FLANK_LEN,
 ) -> Optional[tuple[int, int]]:
-    """
-    Use conserved flanking sequences to locate the full TIM barrel region
-    (including any inserted sequence) in the alternative isoform.
-
-    Extracts ``flank_len`` aa immediately before and after the canonical TIM
-    barrel, searches for each as an exact substring in the alternative, and
-    returns the span between them.
-
-    Returns
-    -------
-    (span_start_1based, span_end_1based)  or  None if either flank is missing
-    or the located span is malformed (end < start).
-    """
     n_flank = canonical_seq[max(0, can_tb_start - 1 - flank_len): can_tb_start - 1]
     c_flank = canonical_seq[can_tb_end: can_tb_end + flank_len]
-
-    # Need at least 5 aa of context on each side
     if len(n_flank) < 5 or len(c_flank) < 5:
         return None
-
-    n_pos = _find_exact(n_flank, alt_seq)   # 0-based start of N-flank in alt
-    c_pos = _find_exact(c_flank, alt_seq)   # 0-based start of C-flank in alt
-
+    n_pos = _find_exact(n_flank, alt_seq)
+    c_pos = _find_exact(c_flank, alt_seq)
     if n_pos == -1 or c_pos == -1:
         return None
-
-    # Span: immediately after N-flank up to immediately before C-flank (1-based)
     span_start = n_pos + len(n_flank) + 1
-    span_end   = c_pos                       # c_flank starts at c_pos+1 (1-based)
-
+    span_end   = c_pos
     if span_end < span_start:
         return None
-
     return span_start, span_end
 
 
+def _sliding_window_result(
+    tb_seq: str, iso_seq: str, can_seq: str, can_tb_start: int, can_tb_end: int
+) -> tuple[float, Optional[str], Optional[str]]:
+    """
+    Compute sliding-window identity, domain_location JSON, and domain_sequence
+    for one alternative isoform.  Returns (identity, loc_json_or_None, subseq_or_None).
+    """
+    tb_len = len(tb_seq)
+    score, win_start, win_end = sliding_window_align(tb_seq, iso_seq)
+    identity = score / tb_len if tb_len > 0 else 0.0
+
+    if identity >= _IDENTITY_MAX:
+        span = find_tim_barrel_span(can_seq, can_tb_start, can_tb_end, iso_seq)
+        if span is not None:
+            span_start, span_end = span
+            span_len = span_end - span_start + 1
+            if span_len > tb_len:
+                identity = score / span_len
+                win_start, win_end = span_start, span_end
+
+    if identity < 0.05:
+        return identity, None, None
+
+    loc = json.dumps({
+        "start":  win_start,
+        "end":    win_end,
+        "length": win_end - win_start + 1,
+        "source": "sliding_window",
+    })
+    seq = iso_seq[win_start - 1: win_end]
+    return identity, loc, seq
+
+
 # ---------------------------------------------------------------------------
-# Data classes
+# Data class
 # ---------------------------------------------------------------------------
 
 @dataclass
 class AlignmentResult:
-    isoform_id: str
-    uniprot_id: str
-    sequence: str
-    sequence_length: int
-    is_fragment: int
-    exon_count: Optional[int]
-    exon_annotations: Optional[str]
-    splice_variants: Optional[str]
-    ensembl_transcript_id: Optional[str]
-    alphafold_id: Optional[str]
-    # Alignment-derived
-    domain_location: str            # JSON — span in this isoform
-    domain_sequence: str            # isoform subsequence at span
-    canonical_domain_location: str  # JSON — original canonical location
-    canonical_domain_sequence: str  # canonical domain sequence used as query
-    identity_percentage: float
-    alignment_score: int
+    isoform_id:                str
+    uniprot_id:                str
+    sequence:                  str
+    sequence_length:           int
+    is_fragment:               int
+    exon_count:                Optional[int]
+    exon_annotations:          Optional[str]
+    splice_variants:           Optional[str]
+    ensembl_transcript_id:     Optional[str]
+    alphafold_id:              Optional[str]
+    domain_location:           Optional[str]   # JSON, alt isoform coords
+    domain_sequence:           Optional[str]
+    canonical_domain_location: str             # JSON, canonical coords
+    canonical_domain_sequence: str
+    identity_percentage:       float
+    alignment_score:           int
+    vsp_domain_events:         str             # JSON list of overlapping VSPs
+    detection_method:          str             # 'vsp' or 'sliding_window'
 
 
 # ---------------------------------------------------------------------------
@@ -157,17 +195,16 @@ class AlignmentResult:
 
 def build_tim_barrel_isoforms(
     conn: sqlite3.Connection,
-    isoform_table: str = "tb_isoforms",
-) -> tuple[list, int, int, int]:
+    isoform_table: str = "isoforms",
+) -> tuple[list, int, int]:
     """
-    Run the alignment analysis and return
-    (results, skipped_identical, skipped_absent, insertions_detected).
+    Detect domain-affecting isoforms using VSP overlap as the primary method.
 
-    Queries ``isoform_table`` for all alternative, non-fragment isoforms
-    whose protein has a canonical isoform with a known tim_barrel_sequence.
+    Returns
+    -------
+    (results, skipped_no_overlap, skipped_fallback_absent)
     """
     conn.row_factory = sqlite3.Row
-
     rows = conn.execute(f"""
         SELECT
             alt.isoform_id,
@@ -193,67 +230,69 @@ def build_tim_barrel_isoforms(
         ORDER BY alt.uniprot_id, alt.isoform_id
     """).fetchall()
 
-    logger.info("Aligning %d alternative isoforms against their canonical TIM barrel", len(rows))
+    logger.info("Checking %d alternative isoforms for domain-affecting events", len(rows))
 
     results: list[AlignmentResult] = []
-    skipped_identical  = 0
-    skipped_absent     = 0
-    insertions_detected = 0
+    skipped_no_overlap   = 0
+    skipped_fallback     = 0
 
     for row in rows:
-        tb_seq  = row["canonical_tb_seq"]
-        iso_seq = row["sequence"]
-        tb_len  = len(tb_seq)
+        tb_seq    = row["canonical_tb_seq"]
+        iso_seq   = row["sequence"]
+        can_seq   = row["canonical_sequence"]
+        tb_loc    = json.loads(row["canonical_tb_loc"])
+        can_ds    = tb_loc["start"]
+        can_de    = tb_loc["end"]
+        tb_len    = len(tb_seq)
 
-        score, win_start, win_end = sliding_window_align(tb_seq, iso_seq)
+        sv_raw = row["splice_variants"]
+        vsps   = json.loads(sv_raw) if sv_raw else []
 
-        identity  = score / tb_len if tb_len > 0 else 0.0
-        loc_start = win_start
-        loc_end   = win_end
-        span_len  = tb_len
-
-        if identity >= _IDENTITY_MAX:
-            # Window says TIM barrel is essentially unchanged.
-            # Check whether an exon was inserted into the TIM barrel region
-            # using conserved flanking sequences to measure the actual span.
-            tb_loc_dict  = json.loads(row["canonical_tb_loc"])
-            can_tb_start = tb_loc_dict["start"]
-            can_tb_end   = tb_loc_dict["end"]
-
-            span = find_tim_barrel_span(
-                row["canonical_sequence"], can_tb_start, can_tb_end, iso_seq
-            )
-
-            if span is not None:
-                span_start, span_end = span
-                detected_span_len = span_end - span_start + 1
-                if detected_span_len > tb_len:
-                    # Insertion confirmed: recompute identity over the full span
-                    identity  = score / detected_span_len
-                    loc_start = span_start
-                    loc_end   = span_end
-                    span_len  = detected_span_len
-                    insertions_detected += 1
-                    # Fall through to threshold checks below
-                else:
-                    skipped_identical += 1
-                    continue
-            else:
-                # Flanks not conserved — cannot determine span; treat as identical
-                skipped_identical += 1
+        # --- Primary: VSP-based detection ---
+        if vsps:
+            events = _vsp_domain_events(vsps, can_ds, can_de)
+            if not events:
+                skipped_no_overlap += 1
                 continue
 
-        if identity < _IDENTITY_MIN:
-            skipped_absent += 1
-            continue
+            identity, loc_json, dom_subseq = _sliding_window_result(
+                tb_seq, iso_seq, can_seq, can_ds, can_de
+            )
+            # identity_percentage stored for reference; detection is VSP-driven
+            score = round(identity * tb_len)
+            method = "vsp"
 
-        tb_location = json.dumps({
-            "start":  loc_start,
-            "end":    loc_end,
-            "length": span_len,
-            "source": "local_alignment" if span_len == tb_len else "local_alignment_span",
-        })
-        tb_subsequence = iso_seq[loc_start - 1:loc_end]
+        # --- Fallback: sliding-window for isoforms with no VSP annotations ---
+        else:
+            score, win_start, win_end = sliding_window_align(tb_seq, iso_seq)
+            identity = score / tb_len if tb_len > 0 else 0.0
+            span_len = tb_len
+
+            if identity >= _IDENTITY_MAX:
+                span = find_tim_barrel_span(can_seq, can_ds, can_de, iso_seq)
+                if span:
+                    span_start, span_end = span
+                    detected_span_len = span_end - span_start + 1
+                    if detected_span_len > tb_len:
+                        identity = score / detected_span_len
+                        win_start, win_end = span_start, span_end
+                        span_len = detected_span_len
+
+                if identity >= _IDENTITY_MAX:
+                    skipped_no_overlap += 1
+                    continue
+
+            if identity < _IDENTITY_MIN:
+                skipped_fallback += 1
+                continue
+
+            loc_json = json.dumps({
+                "start": win_start, "end": win_end,
+                "length": span_len, "source": "sliding_window",
+            })
+            dom_subseq = iso_seq[win_start - 1: win_end]
+            events = []
+            method = "sliding_window"
 
         results.append(AlignmentResult(
             isoform_id=row["isoform_id"],
@@ -263,37 +302,41 @@ def build_tim_barrel_isoforms(
             is_fragment=row["is_fragment"],
             exon_count=row["exon_count"],
             exon_annotations=row["exon_annotations"],
-            splice_variants=row["splice_variants"],
+            splice_variants=sv_raw,
             ensembl_transcript_id=row["ensembl_transcript_id"],
             alphafold_id=row["alphafold_id"],
-            domain_location=tb_location,
-            domain_sequence=tb_subsequence,
+            domain_location=loc_json,
+            domain_sequence=dom_subseq,
             canonical_domain_location=row["canonical_tb_loc"],
             canonical_domain_sequence=tb_seq,
             identity_percentage=round(identity * 100, 2),
             alignment_score=score,
+            vsp_domain_events=json.dumps(events),
+            detection_method=method,
         ))
 
     logger.info(
-        "Results: %d inserted (%d by insertion detection) | "
-        "%d skipped (>= 95%%) | %d skipped (< 12.5%%)",
-        len(results), insertions_detected, skipped_identical, skipped_absent,
+        "Results: %d domain-affecting isoforms | %d no overlap | %d fallback absent",
+        len(results), skipped_no_overlap, skipped_fallback,
     )
-    return results, skipped_identical, skipped_absent, insertions_detected
+    return results, skipped_no_overlap, skipped_fallback
 
 
 def populate_tim_barrel_isoforms(
     conn: sqlite3.Connection,
-    isoform_table: str = "tb_isoforms",
-    output_table: str = "tb_affected_isoforms",
-) -> tuple[int, int, int, int]:
-    """
-    Rebuild ``output_table`` from scratch and return
-    (inserted, skipped_identical, skipped_absent, insertions_detected).
-    """
-    conn.execute(f"DELETE FROM {output_table}")
+    isoform_table: str  = "isoforms",
+    output_table: str   = "affected_isoforms",
+) -> tuple[int, int, int]:
+    """Rebuild output_table and return (inserted, skipped_no_overlap, skipped_fallback)."""
+    # Add new columns if missing
+    existing = {r[1] for r in conn.execute(f"PRAGMA table_info({output_table})")}
+    for col, typedef in [("vsp_domain_events", "TEXT"), ("detection_method", "TEXT")]:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE {output_table} ADD COLUMN {col} {typedef}")
+            logger.info("Added %s to %s", col, output_table)
 
-    results, skipped_identical, skipped_absent, insertions_detected = build_tim_barrel_isoforms(
+    conn.execute(f"DELETE FROM {output_table}")
+    results, skipped_no_overlap, skipped_fallback = build_tim_barrel_isoforms(
         conn, isoform_table=isoform_table
     )
 
@@ -304,16 +347,18 @@ def populate_tim_barrel_isoforms(
             domain_location, domain_sequence,
             canonical_domain_location, canonical_domain_sequence,
             identity_percentage, alignment_score,
-            ensembl_transcript_id, alphafold_id
+            ensembl_transcript_id, alphafold_id,
+            vsp_domain_events, detection_method
         ) VALUES (
             :isoform_id, :uniprot_id, 0, :sequence, :sequence_length,
             :is_fragment, :exon_count, :exon_annotations, :splice_variants,
             :domain_location, :domain_sequence,
             :canonical_domain_location, :canonical_domain_sequence,
             :identity_percentage, :alignment_score,
-            :ensembl_transcript_id, :alphafold_id
+            :ensembl_transcript_id, :alphafold_id,
+            :vsp_domain_events, :detection_method
         )
     """, [r.__dict__ for r in results])
 
     conn.commit()
-    return len(results), skipped_identical, skipped_absent, insertions_detected
+    return len(results), skipped_no_overlap, skipped_fallback

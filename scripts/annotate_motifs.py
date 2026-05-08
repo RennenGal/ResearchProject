@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Annotate TIM barrel (beta-alpha)_8 motifs for all proteins in tb_canonical_analysis.
+Annotate TIM barrel (beta-alpha)_8 motifs for all proteins in canonical_analysis.
 
 For each protein:
   1. Download the AlphaFold F1 PDB structure (latest version, cached locally).
   2. Run pydssp to assign per-residue secondary structure (H / E / -).
   3. Identify the 8 beta-alpha motifs inside the stored domain region.
-  4. Write the result to tb_canonical_analysis.motif_annotations and dssp_source.
+  4. Write the result to canonical_analysis.motif_annotations and dssp_source.
 
 PDB files are cached under data/alphafold_pdb/ to avoid re-downloading.
 
@@ -148,8 +148,8 @@ def run(
     where = "" if rerun else "AND motif_annotations IS NULL"
     query = f"""
         SELECT ca.uniprot_id, iso.alphafold_id, ca.domain_start, ca.domain_end
-        FROM tb_canonical_analysis ca
-        JOIN tb_isoforms iso ON iso.uniprot_id = ca.uniprot_id
+        FROM canonical_analysis ca
+        JOIN isoforms iso ON iso.uniprot_id = ca.uniprot_id
           AND iso.is_canonical = 1
         WHERE ca.domain_start IS NOT NULL
           AND ca.domain_end   IS NOT NULL
@@ -175,7 +175,7 @@ def run(
         if pdb_text is None:
             stats["no_structure"] += 1
             conn.execute(
-                "UPDATE tb_canonical_analysis SET dssp_source='not_found' WHERE uniprot_id=?",
+                "UPDATE canonical_analysis SET dssp_source='not_found' WHERE uniprot_id=?",
                 (uniprot_id,),
             )
             if i % 100 == 0:
@@ -187,7 +187,7 @@ def run(
         if motifs is None:
             stats["no_motifs"] += 1
             conn.execute(
-                "UPDATE tb_canonical_analysis SET dssp_source='dssp_failed' WHERE uniprot_id=?",
+                "UPDATE canonical_analysis SET dssp_source='dssp_failed' WHERE uniprot_id=?",
                 (uniprot_id,),
             )
         else:
@@ -198,7 +198,7 @@ def run(
                 stats["annotated"] += 1
 
             conn.execute(
-                """UPDATE tb_canonical_analysis
+                """UPDATE canonical_analysis
                    SET motif_annotations=?, dssp_source=?
                    WHERE uniprot_id=?""",
                 (json.dumps(motifs), dssp_source, uniprot_id),
@@ -221,14 +221,14 @@ def run(
 
 def print_summary(conn: sqlite3.Connection, stats: dict) -> None:
     total = conn.execute(
-        "SELECT COUNT(*) FROM tb_canonical_analysis WHERE domain_start IS NOT NULL"
+        "SELECT COUNT(*) FROM canonical_analysis WHERE domain_start IS NOT NULL"
     ).fetchone()[0]
     with_8 = conn.execute(
-        "SELECT COUNT(*) FROM tb_canonical_analysis WHERE motif_annotations IS NOT NULL "
+        "SELECT COUNT(*) FROM canonical_analysis WHERE motif_annotations IS NOT NULL "
         "AND json_array_length(motif_annotations) = 8"
     ).fetchone()[0]
     with_any = conn.execute(
-        "SELECT COUNT(*) FROM tb_canonical_analysis WHERE motif_annotations IS NOT NULL "
+        "SELECT COUNT(*) FROM canonical_analysis WHERE motif_annotations IS NOT NULL "
         "AND json_array_length(motif_annotations) > 0"
     ).fetchone()[0]
 

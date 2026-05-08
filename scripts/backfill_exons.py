@@ -4,7 +4,7 @@ Backfill exon boundary data for Ensembl transcripts and flag AS-affected
 transcripts whose exon junctions fall inside the TIM barrel domain.
 
 Phase 1 — Fetch exon boundaries
-    For each row in tb_ensembl_transcripts without exon_annotations, calls the
+    For each row in ensembl_transcripts without exon_annotations, calls the
     Ensembl REST API (/lookup/id/{ENST}?expand=1) to compute protein-space exon
     boundary positions and stores them as a JSON array in exon_annotations.
 
@@ -12,8 +12,8 @@ Phase 1 — Fetch exon boundaries
     exon (ceiling of cumulative CDS bases / 3). The final exon is omitted.
 
 Phase 2 — Flag domain-disrupting exon junctions
-    For each row in tb_ensembl_affected, checks whether any exon boundary from
-    the corresponding tb_ensembl_transcripts row falls strictly inside the
+    For each row in ensembl_affected, checks whether any exon boundary from
+    the corresponding ensembl_transcripts row falls strictly inside the
     domain region [domain_start, domain_end - 1].  Writes the result to
     exon_boundary_in_domain (1 or 0).
 
@@ -44,8 +44,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_TRANSCRIPT_TABLE = "tb_ensembl_transcripts"
-_AFFECTED_TABLE   = "tb_ensembl_affected"
+_TRANSCRIPT_TABLE = "ensembl_transcripts"
+_AFFECTED_TABLE   = "ensembl_affected"
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def backfill_exon_annotations(conn: sqlite3.Connection, limit: int | None = None
 
 def flag_exon_boundary_in_domain(conn: sqlite3.Connection) -> tuple[int, int]:
     """
-    For each row in tb_ensembl_affected, check whether any exon boundary from
+    For each row in ensembl_affected, check whether any exon boundary from
     the corresponding transcript's exon_annotations falls strictly inside the
     domain region [domain_start, domain_end - 1].
 

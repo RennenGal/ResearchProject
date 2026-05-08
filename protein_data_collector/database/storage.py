@@ -22,7 +22,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
 def upsert_domain_entry(
     conn: sqlite3.Connection,
     entry: TIMBarrelEntry,
-    table: str = "tb_entries",
+    table: str = "entries",
 ) -> None:
     conn.execute(
         f"""
@@ -37,7 +37,7 @@ def upsert_domain_entry(
 
 def get_all_domain_entries(
     conn: sqlite3.Connection,
-    table: str = "tb_entries",
+    table: str = "entries",
 ) -> List[dict]:
     rows = conn.execute(f"SELECT * FROM {table}").fetchall()
     return [_row_to_dict(r) for r in rows]
@@ -50,7 +50,7 @@ def get_all_domain_entries(
 def upsert_protein(
     conn: sqlite3.Connection,
     protein: Protein,
-    table: str = "tb_proteins",
+    table: str = "proteins",
 ) -> None:
     conn.execute(
         f"""
@@ -68,7 +68,7 @@ def upsert_protein(
 
 def get_all_proteins(
     conn: sqlite3.Connection,
-    table: str = "tb_proteins",
+    table: str = "proteins",
 ) -> List[dict]:
     rows = conn.execute(f"SELECT * FROM {table}").fetchall()
     return [_row_to_dict(r) for r in rows]
@@ -76,8 +76,8 @@ def get_all_proteins(
 
 def get_proteins_without_isoforms(
     conn: sqlite3.Connection,
-    protein_table: str = "tb_proteins",
-    isoform_table: str = "tb_isoforms",
+    protein_table: str = "proteins",
+    isoform_table: str = "isoforms",
 ) -> List[str]:
     """Return uniprot_ids of canonical proteins that have no rows in the isoforms table."""
     rows = conn.execute(
@@ -95,8 +95,8 @@ def get_proteins_without_isoforms(
 
 def deduplicate_proteins(
     conn: sqlite3.Connection,
-    protein_table: str = "tb_proteins",
-    isoform_table: str = "tb_isoforms",
+    protein_table: str = "proteins",
+    isoform_table: str = "isoforms",
 ) -> int:
     """
     Group proteins by (protein_name, organism) and mark redundant entries by setting
@@ -150,7 +150,7 @@ def deduplicate_proteins(
 def upsert_isoform(
     conn: sqlite3.Connection,
     isoform: Isoform,
-    table: str = "tb_isoforms",
+    table: str = "isoforms",
 ) -> None:
     conn.execute(
         f"""
@@ -181,7 +181,7 @@ def upsert_isoform(
 def get_isoforms_for_protein(
     conn: sqlite3.Connection,
     uniprot_id: str,
-    table: str = "tb_isoforms",
+    table: str = "isoforms",
 ) -> List[dict]:
     rows = conn.execute(
         f"SELECT * FROM {table} WHERE uniprot_id = ? ORDER BY is_canonical DESC, isoform_id",
@@ -192,7 +192,7 @@ def get_isoforms_for_protein(
 
 def get_all_isoforms(
     conn: sqlite3.Connection,
-    table: str = "tb_isoforms",
+    table: str = "isoforms",
 ) -> List[dict]:
     rows = conn.execute(
         f"SELECT * FROM {table} ORDER BY uniprot_id, is_canonical DESC"
@@ -207,7 +207,7 @@ def get_all_isoforms(
 def upsert_domain_entries(
     conn: sqlite3.Connection,
     entries: List[TIMBarrelEntry],
-    table: str = "tb_entries",
+    table: str = "entries",
 ) -> None:
     for entry in entries:
         upsert_domain_entry(conn, entry, table=table)
@@ -217,7 +217,7 @@ def upsert_domain_entries(
 def upsert_proteins(
     conn: sqlite3.Connection,
     proteins: List[Protein],
-    table: str = "tb_proteins",
+    table: str = "proteins",
 ) -> None:
     for protein in proteins:
         upsert_protein(conn, protein, table=table)
@@ -227,7 +227,7 @@ def upsert_proteins(
 def upsert_isoforms(
     conn: sqlite3.Connection,
     isoforms: List[Isoform],
-    table: str = "tb_isoforms",
+    table: str = "isoforms",
 ) -> None:
     for isoform in isoforms:
         upsert_isoform(conn, isoform, table=table)
@@ -240,9 +240,9 @@ def upsert_isoforms(
 
 def get_counts(
     conn: sqlite3.Connection,
-    entries_table: str = "tb_entries",
-    protein_table: str = "tb_proteins",
-    isoform_table: str = "tb_isoforms",
+    entries_table: str = "entries",
+    protein_table: str = "proteins",
+    isoform_table: str = "isoforms",
 ) -> dict:
     counts = {}
     for table in (entries_table, protein_table, isoform_table):

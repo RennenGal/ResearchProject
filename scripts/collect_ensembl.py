@@ -2,18 +2,18 @@
 """
 Expand TIM barrel isoform coverage using Ensembl protein-coding transcripts.
 
-For every canonical protein in tb_proteins that has an Ensembl mapping
-(ENST stored in tb_isoforms.ensembl_transcript_id), this script:
+For every canonical protein in proteins that has an Ensembl mapping
+(ENST stored in isoforms.ensembl_transcript_id), this script:
 
   1. Resolves ENST → ENSG (gene ID) via the Ensembl REST API.
   2. Fetches all protein-coding transcripts for the gene.
   3. Downloads the translated amino-acid sequence for each transcript.
-  4. Stores new transcripts in tb_ensembl_transcripts, flagging duplicates
-     (sequences already present in tb_isoforms).
+  4. Stores new transcripts in ensembl_transcripts, flagging duplicates
+     (sequences already present in isoforms).
   5. Runs the sliding-window alignment analysis against the canonical
-     TIM barrel sequence and stores AS-affected hits in tb_ensembl_affected.
+     TIM barrel sequence and stores AS-affected hits in ensembl_affected.
 
-Results are written to the two new tables only — tb_isoforms is not touched.
+Results are written to the two new tables only — isoforms is not touched.
 
 Usage:
     python scripts/collect_ensembl.py
@@ -51,9 +51,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_ISOFORM_TABLE     = "tb_isoforms"
-_TRANSCRIPT_TABLE  = "tb_ensembl_transcripts"
-_AFFECTED_TABLE    = "tb_ensembl_affected"
+_ISOFORM_TABLE     = "isoforms"
+_TRANSCRIPT_TABLE  = "ensembl_transcripts"
+_AFFECTED_TABLE    = "ensembl_affected"
 _MIN_SEQ_LEN       = 200   # fragment threshold (consistent with isoforms table)
 
 
@@ -92,7 +92,7 @@ def _build_ensg_map(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 def _existing_uniprot_sequences(conn: sqlite3.Connection) -> dict[str, str]:
-    """Return {sequence: isoform_id} for all sequences in tb_isoforms."""
+    """Return {sequence: isoform_id} for all sequences in isoforms."""
     rows = conn.execute(
         f"SELECT sequence, isoform_id FROM {_ISOFORM_TABLE} WHERE sequence IS NOT NULL"
     ).fetchall()
@@ -100,7 +100,7 @@ def _existing_uniprot_sequences(conn: sqlite3.Connection) -> dict[str, str]:
 
 
 def _existing_enst_sequences(conn: sqlite3.Connection) -> dict[str, str]:
-    """Return {sequence: enst_id} for all sequences already in tb_ensembl_transcripts."""
+    """Return {sequence: enst_id} for all sequences already in ensembl_transcripts."""
     rows = conn.execute(
         f"SELECT sequence, enst_id FROM {_TRANSCRIPT_TABLE} WHERE sequence IS NOT NULL"
     ).fetchall()
@@ -119,7 +119,7 @@ def collect_transcripts(
     enst_seqs: dict[str, str],
     existing_ensts: set[str],
 ) -> int:
-    """Fetch all transcripts and upsert into tb_ensembl_transcripts. Returns insert count."""
+    """Fetch all transcripts and upsert into ensembl_transcripts. Returns insert count."""
     inserted = 0
     total_proteins = len(ensg_map)
 
@@ -129,7 +129,7 @@ def collect_transcripts(
             logger.debug("No transcripts returned for %s (ENSG %s)", uid, ensg)
             continue
 
-        row = conn.execute("SELECT gene_name FROM tb_proteins WHERE uniprot_id=?", (uid,)).fetchone()
+        row = conn.execute("SELECT gene_name FROM proteins WHERE uniprot_id=?", (uid,)).fetchone()
         gene_name = row[0] if row else None
 
         for tx in transcripts:
@@ -307,7 +307,7 @@ def main() -> None:
     conn.row_factory = sqlite3.Row
 
     if args.rebuild:
-        logger.info("--rebuild: clearing tb_ensembl_affected and tb_ensembl_transcripts")
+        logger.info("--rebuild: clearing ensembl_affected and ensembl_transcripts")
         conn.execute(f"DELETE FROM {_AFFECTED_TABLE}")
         conn.execute(f"DELETE FROM {_TRANSCRIPT_TABLE}")
         conn.commit()

@@ -192,7 +192,7 @@ class TestCounts:
             upsert_isoform(conn, isoform)
             conn.commit()
             counts = get_counts(conn)
-        assert counts["tb_entries"] == 1
-        assert counts["tb_proteins"] == 1
-        assert counts["tb_isoforms"] == 1
+        assert counts["entries"] == 1
+        assert counts["proteins"] == 1
+        assert counts["isoforms"] == 1
         assert counts["alternative_isoforms"] == 0

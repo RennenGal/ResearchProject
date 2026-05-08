@@ -3,15 +3,14 @@
 HMMER3-based domain boundary detection for canonical isoforms.
 
 Uses pyhmmer (Python bindings for HMMER3) to scan canonical protein sequences
-against the HMM profiles for all entries in the domain's entries table.
-Updates tim_barrel_location and tim_barrel_sequence in the isoforms table.
+against the HMM profiles for all entries in entries.
+Updates tim_barrel_location and tim_barrel_sequence in isoforms.
 
 HMMs are fetched from the InterPro API and cached in data/hmm/.
 
 Usage:
     python scripts/run_hmmer.py
-    python scripts/run_hmmer.py --domain tim_barrel
-    python scripts/run_hmmer.py --domain tim_barrel --evalue 1e-5
+    python scripts/run_hmmer.py --evalue 1e-5
     python scripts/run_hmmer.py --rebuild-hmms   # re-fetch HMMs even if cached
 """
 
@@ -334,9 +333,7 @@ def _compare_locations(hits: Dict[str, dict], isoform_table: str, db_path: str) 
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run HMMER3 domain scan on canonical isoforms")
-    parser.add_argument("--domain",       default="tim_barrel", choices=list(DOMAINS))
-    parser.add_argument("--organism",     default="homo_sapiens", choices=list(ORGANISMS))
+    parser = argparse.ArgumentParser(description="Run HMMER3 domain scan on TIM barrel canonical isoforms")
     parser.add_argument("--db",           default=None)
     parser.add_argument("--evalue",       type=float, default=1e-5)
     parser.add_argument("--overwrite",    action="store_true",
@@ -353,12 +350,11 @@ def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    domain_cfg   = DOMAINS[args.domain]
-    organism_cfg = ORGANISMS[args.organism]
-    db_path      = args.db or get_config().db_path
-    hmm_dir      = Path(args.hmm_dir)
+    domain_cfg = DOMAINS["tim_barrel"]
+    db_path    = args.db or get_config().db_path
+    hmm_dir    = Path(args.hmm_dir)
 
-    isoform_table = organism_cfg.isoform_table(domain_cfg)
+    isoform_table = ORGANISMS["homo_sapiens"].isoform_table(domain_cfg)
 
     # Step 1 — fetch / load HMMs
     hmm_path = fetch_all_hmms(
@@ -382,8 +378,6 @@ def main() -> None:
     updated, skipped = update_db(hits, isoform_table, db_path, overwrite=args.overwrite)
 
     print(f"\n{'='*55}")
-    print(f"  Domain   : {domain_cfg.display_name}")
-    print(f"  Organism : {organism_cfg.display_name}")
     print(f"  E-value  : {args.evalue}")
     print(f"{'='*55}")
     print(f"  Sequences scanned     : {len(sequences)}")

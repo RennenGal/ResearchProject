@@ -7,9 +7,9 @@ Steps
 -----
 1. Add gene_name column to tables that don't have it yet (idempotent ALTER TABLE).
 2. Fetch gene names from the UniProt search API in batches for all proteins
-   in tb_proteins that still have gene_name IS NULL.
-3. UPDATE tb_proteins with the fetched names.
-4. Propagate tb_proteins.gene_name into all downstream tables via JOIN UPDATE.
+   in proteins that still have gene_name IS NULL.
+3. UPDATE proteins with the fetched names.
+4. Propagate proteins.gene_name into all downstream tables via JOIN UPDATE.
 
 Usage
 -----
@@ -38,19 +38,19 @@ logger = logging.getLogger(__name__)
 
 # Tables that need a gene_name column added (idempotent)
 _COLUMNS_TO_ADD = [
-    ("tb_isoforms",          "gene_name", "TEXT"),
-    ("tb_affected_isoforms", "gene_name", "TEXT"),
-    ("tb_ensembl_affected",  "gene_name", "TEXT"),
-    # tb_proteins and tb_ensembl_transcripts already have gene_name in schema
+    ("isoforms",          "gene_name", "TEXT"),
+    ("affected_isoforms", "gene_name", "TEXT"),
+    ("ensembl_affected",  "gene_name", "TEXT"),
+    # proteins and ensembl_transcripts already have gene_name in schema
 ]
 
-# Tables to propagate gene_name into via JOIN with tb_proteins
+# Tables to propagate gene_name into via JOIN with proteins
 _PROPAGATE_TARGETS = [
     # (target_table, join_column)
-    ("tb_isoforms",            "uniprot_id"),
-    ("tb_affected_isoforms",   "uniprot_id"),
-    ("tb_ensembl_transcripts", "uniprot_id"),
-    ("tb_ensembl_affected",    "uniprot_id"),
+    ("isoforms",            "uniprot_id"),
+    ("affected_isoforms",   "uniprot_id"),
+    ("ensembl_transcripts", "uniprot_id"),
+    ("ensembl_affected",    "uniprot_id"),
 ]
 
 
@@ -73,11 +73,11 @@ def ensure_gene_name_columns(conn: sqlite3.Connection) -> None:
 
 def fetch_gene_names(conn: sqlite3.Connection) -> int:
     rows = conn.execute(
-        "SELECT uniprot_id FROM tb_proteins WHERE gene_name IS NULL"
+        "SELECT uniprot_id FROM proteins WHERE gene_name IS NULL"
     ).fetchall()
 
     if not rows:
-        logger.info("All tb_proteins rows already have gene_name — skipping fetch")
+        logger.info("All proteins rows already have gene_name — skipping fetch")
         return 0
 
     ids = [r[0] for r in rows]
@@ -90,7 +90,7 @@ def fetch_gene_names(conn: sqlite3.Connection) -> int:
     logger.info("Gene names found: %d / %d", found, len(ids))
 
     conn.executemany(
-        "UPDATE tb_proteins SET gene_name=? WHERE uniprot_id=?",
+        "UPDATE proteins SET gene_name=? WHERE uniprot_id=?",
         [(name, uid) for uid, name in name_map.items()],
     )
     conn.commit()
@@ -98,7 +98,7 @@ def fetch_gene_names(conn: sqlite3.Connection) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — propagate from tb_proteins to downstream tables
+# Step 3 — propagate from proteins to downstream tables
 # ---------------------------------------------------------------------------
 
 def propagate_gene_names(conn: sqlite3.Connection) -> None:
@@ -119,7 +119,7 @@ def propagate_gene_names(conn: sqlite3.Connection) -> None:
         conn.execute(f"""
             UPDATE {table}
             SET gene_name = (
-                SELECT gene_name FROM tb_proteins
+                SELECT gene_name FROM proteins
                 WHERE uniprot_id = {table}.{join_col}
             )
             WHERE gene_name IS NULL
@@ -139,7 +139,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch and propagate gene names")
     parser.add_argument("--db",              default=None)
     parser.add_argument("--propagate-only",  action="store_true",
-                        help="Skip UniProt fetch; only propagate existing tb_proteins.gene_name")
+                        help="Skip UniProt fetch; only propagate existing proteins.gene_name")
     parser.add_argument("--log-level",       default="INFO")
     args = parser.parse_args()
 
@@ -156,10 +156,10 @@ def main() -> None:
         found = fetch_gene_names(conn)
 
         filled = conn.execute(
-            "SELECT COUNT(*) FROM tb_proteins WHERE gene_name IS NOT NULL"
+            "SELECT COUNT(*) FROM proteins WHERE gene_name IS NOT NULL"
         ).fetchone()[0]
-        total = conn.execute("SELECT COUNT(*) FROM tb_proteins").fetchone()[0]
-        print(f"\n  Gene names in tb_proteins: {filled} / {total}")
+        total = conn.execute("SELECT COUNT(*) FROM proteins").fetchone()[0]
+        print(f"\n  Gene names in proteins: {filled} / {total}")
 
     logger.info("=== Step 3: propagate to downstream tables ===")
     propagate_gene_names(conn)

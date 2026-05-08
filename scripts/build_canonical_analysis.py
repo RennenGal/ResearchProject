@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Build the tb_canonical_analysis table from tb_isoforms + tb_proteins.
+Build the canonical_analysis table from isoforms + proteins.
 
 One row per canonical, non-fragment human TIM barrel protein.
 
 Fields populated here
 ---------------------
-  uniprot_id       — from tb_isoforms
-  gene_name        — from tb_proteins (populated by fetch_gene_names.py first)
-  sequence         — full protein sequence (from tb_isoforms)
+  uniprot_id       — from isoforms
+  gene_name        — from proteins (populated by fetch_gene_names.py first)
+  sequence         — full protein sequence (from isoforms)
   domain_start     — from tim_barrel_location JSON
   domain_end       — from tim_barrel_location JSON
   domain_sequence  — from tim_barrel_sequence (or sliced if missing)
@@ -43,7 +43,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_TABLE = "tb_canonical_analysis"
+_TABLE = "canonical_analysis"
 
 _CREATE_TABLE = f"""
 CREATE TABLE IF NOT EXISTS {_TABLE} (
@@ -58,9 +58,9 @@ CREATE TABLE IF NOT EXISTS {_TABLE} (
     dssp_source         TEXT,
     hmmer_source        TEXT,
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
+    FOREIGN KEY (uniprot_id) REFERENCES proteins(uniprot_id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_tb_can_gene ON {_TABLE}(gene_name);
+CREATE INDEX IF NOT EXISTS idx_can_gene ON {_TABLE}(gene_name);
 """
 
 
@@ -112,8 +112,8 @@ def build(conn: sqlite3.Connection, rebuild: bool = False) -> int:
             iso.tim_barrel_location,
             iso.tim_barrel_sequence,
             iso.exon_annotations
-        FROM tb_isoforms iso
-        JOIN tb_proteins p ON p.uniprot_id = iso.uniprot_id
+        FROM isoforms iso
+        JOIN proteins p ON p.uniprot_id = iso.uniprot_id
         WHERE iso.is_canonical = 1
           AND iso.is_fragment  = 0
           AND p.canonical_uniprot_id IS NULL
@@ -196,7 +196,7 @@ def print_summary(conn: sqlite3.Connection) -> None:
             pass
 
     print(f"\n{'='*60}")
-    print(f"  tb_canonical_analysis summary")
+    print(f"  canonical_analysis summary")
     print(f"{'='*60}")
     print(f"  Total rows             : {total}")
     print(f"  With gene_name         : {w_gene} / {total}")
@@ -213,7 +213,7 @@ def print_summary(conn: sqlite3.Connection) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build tb_canonical_analysis from tb_isoforms + tb_proteins"
+        description="Build canonical_analysis from isoforms + proteins"
     )
     parser.add_argument("--db",       default=None)
     parser.add_argument("--rebuild",  action="store_true",

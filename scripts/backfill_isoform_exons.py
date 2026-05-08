@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Backfill exon junction data for tb_isoforms and flag domain-disrupting
-junctions in tb_affected_isoforms.
+Backfill exon junction data for isoforms and flag domain-disrupting
+junctions in affected_isoforms.
 
 Phase 1 — Canonical isoforms
     For each canonical isoform with an ensembl_transcript_id, calls the
     Ensembl REST API to obtain protein-space exon boundary positions and
-    stores them as a JSON array in tb_isoforms.exon_annotations.
+    stores them as a JSON array in isoforms.exon_annotations.
 
 Phase 2 — Alternative isoforms
     Derives exon boundary positions for each alternative isoform by
@@ -21,8 +21,8 @@ Phase 2 — Alternative isoforms
     regions are dropped; boundaries outside are shifted to their alternative-
     space positions.
 
-Phase 3 — Flag domain-disrupting junctions in tb_affected_isoforms
-    Copies exon_annotations from tb_isoforms into tb_affected_isoforms and
+Phase 3 — Flag domain-disrupting junctions in affected_isoforms
+    Copies exon_annotations from isoforms into affected_isoforms and
     checks whether any exon junction falls strictly inside the domain region
     [domain_start, domain_end).
 
@@ -53,8 +53,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_ISOFORM_TABLE  = "tb_isoforms"
-_AFFECTED_TABLE = "tb_affected_isoforms"
+_ISOFORM_TABLE  = "isoforms"
+_AFFECTED_TABLE = "affected_isoforms"
 
 
 # ---------------------------------------------------------------------------
@@ -223,12 +223,12 @@ def backfill_alternative(conn: sqlite3.Connection) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 — copy exon data into tb_affected_isoforms and flag domain junctions
+# Phase 3 — copy exon data into affected_isoforms and flag domain junctions
 # ---------------------------------------------------------------------------
 
 def flag_domain_boundaries(conn: sqlite3.Connection) -> tuple[int, int]:
     """
-    1. Copy exon_annotations from tb_isoforms into tb_affected_isoforms.
+    1. Copy exon_annotations from isoforms into affected_isoforms.
     2. For each row, check whether any boundary falls in [domain_start, domain_end).
     Returns (flagged, total_evaluated).
     """

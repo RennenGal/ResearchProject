@@ -7,11 +7,11 @@ from typing import Dict
 
 @dataclass
 class DomainConfig:
-    """Domain-specific settings (e.g. TIM barrel, beta propeller)."""
+    """Domain-specific settings."""
     display_name: str                   # e.g. "TIM barrel"
     interpro_annotation: str            # term for InterPro annotation= query (exact match)
-    entries_table: str                  # e.g. "tb_entries"
-    table_prefix: str                   # e.g. "tb_" — used to derive organism tables
+    entries_table: str                  # e.g. "entries"
+    table_prefix: str                   # e.g. "" — used to derive organism table names
     interpro_search: str = ""           # term for InterPro search= query (text match, fallback)
     cathgene3d_search: str = ""         # search= query for CATH Gene3D (catches structurally-classified entries with no IPR parent)
     extra_accessions: tuple = ()        # additional accessions to always include; never removed by cleanup
@@ -34,50 +34,24 @@ class OrganismConfig:
         return f"{domain.table_prefix}affected_isoforms{self.organism_suffix}"
 
 
-# Registry of supported domains.  Keys are the CLI --domain argument values.
 DOMAINS: Dict[str, DomainConfig] = {
     "tim_barrel": DomainConfig(
         display_name="TIM barrel",
         interpro_annotation="TIM barrel",
-        entries_table="tb_entries",
-        table_prefix="tb_",
-        cathgene3d_search="3.20.20",    # CATH TIM barrel superfamilies (3.20.20.x); catches structurally-confirmed entries with no IPR parent
+        entries_table="entries",
+        table_prefix="",
+        cathgene3d_search="3.20.20",
         extra_accessions=(
-            "IPR011060",   # Ribulose-phosphate binding barrel (SSF51366 parent) — not returned by annotation= query
-        ),
-    ),
-    "beta_propeller": DomainConfig(
-        display_name="Beta propeller",
-        interpro_annotation="",           # no uniform annotation= term in InterPro
-        entries_table="bp_entries",
-        table_prefix="bp_",
-        interpro_search="propeller",      # text search catches named beta-propeller entries
-        cathgene3d_search="2.130",        # CATH beta propeller superfamilies (2.130.x.x); catches structurally-confirmed entries with no Pfam entry (e.g. integrins, RCC1)
-        extra_accessions=(                # WD40 superfamilies — common beta propeller not named "propeller"
-            "PF00400",    # WD domain, G-beta repeat (WD40)
-            "IPR001680",  # WD40 repeat
-            "IPR036322",  # WD40-repeat-containing domain superfamily
-            "IPR015943",  # WD40/YVTN repeat-like-containing domain superfamily
+            "IPR011060",
         ),
     ),
 }
 
-# Registry of supported organisms.  Keys are the CLI --organism argument values.
 ORGANISMS: Dict[str, OrganismConfig] = {
     "homo_sapiens": OrganismConfig(
         display_name="Homo sapiens",
         taxon_id=9606,
         organism_suffix="",
-    ),
-    "mus_musculus": OrganismConfig(
-        display_name="Mus musculus",
-        taxon_id=10090,
-        organism_suffix="_mus_musculus",
-    ),
-    "rattus_norvegicus": OrganismConfig(
-        display_name="Rattus norvegicus",
-        taxon_id=10116,
-        organism_suffix="_rattus_norvegicus",
     ),
 }
 

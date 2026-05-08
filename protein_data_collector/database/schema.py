@@ -1,34 +1,14 @@
-"""Database schema — SQL DDL for all domain/organism table sets.
-
-Naming convention
------------------
-  {domain_prefix}_entries                          — domain family entries (one per domain)
-  {domain_prefix}_proteins[_{organism}]            — collected proteins
-  {domain_prefix}_isoforms[_{organism}]            — collected isoforms
-  {domain_prefix}_affected_isoforms[_{organism}]   — AS-affected domain isoforms (analysis)
-
-Domain prefixes : tb (TIM barrel), bp (beta propeller)
-Organisms       : (none = Homo sapiens), _mus_musculus, _rattus_norvegicus
-"""
+"""Database schema — SQL DDL for TIM barrel / Homo sapiens tables."""
 
 import sqlite3
 
 
 _CREATE_TABLES = """
 -- ============================================================
--- Domain entries (one table per domain, shared across organisms)
+-- Domain entries
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS tb_entries (
-    accession         TEXT PRIMARY KEY,
-    entry_type        TEXT NOT NULL CHECK (entry_type IN ('pfam', 'interpro', 'cathgene3d')),
-    name              TEXT NOT NULL,
-    description       TEXT,
-    domain_annotation TEXT NOT NULL,
-    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS bp_entries (
+CREATE TABLE IF NOT EXISTS entries (
     accession         TEXT PRIMARY KEY,
     entry_type        TEXT NOT NULL CHECK (entry_type IN ('pfam', 'interpro', 'cathgene3d')),
     name              TEXT NOT NULL,
@@ -41,7 +21,7 @@ CREATE TABLE IF NOT EXISTS bp_entries (
 -- TIM barrel — Homo sapiens
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS tb_proteins (
+CREATE TABLE IF NOT EXISTS proteins (
     uniprot_id           TEXT PRIMARY KEY,
     tim_barrel_accession TEXT NOT NULL,
     protein_name         TEXT,
@@ -52,11 +32,11 @@ CREATE TABLE IF NOT EXISTS tb_proteins (
     annotation_score     INTEGER,
     canonical_uniprot_id TEXT,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tim_barrel_accession) REFERENCES tb_entries(accession) ON DELETE CASCADE,
-    FOREIGN KEY (canonical_uniprot_id) REFERENCES tb_proteins(uniprot_id)
+    FOREIGN KEY (tim_barrel_accession) REFERENCES entries(accession) ON DELETE CASCADE,
+    FOREIGN KEY (canonical_uniprot_id) REFERENCES proteins(uniprot_id)
 );
 
-CREATE TABLE IF NOT EXISTS tb_isoforms (
+CREATE TABLE IF NOT EXISTS isoforms (
     isoform_id          TEXT PRIMARY KEY,
     uniprot_id          TEXT NOT NULL,
     is_canonical        INTEGER NOT NULL DEFAULT 0,
@@ -72,10 +52,10 @@ CREATE TABLE IF NOT EXISTS tb_isoforms (
     ensembl_transcript_id     TEXT,
     alphafold_id        TEXT,
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
+    FOREIGN KEY (uniprot_id) REFERENCES proteins(uniprot_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS tb_affected_isoforms (
+CREATE TABLE IF NOT EXISTS affected_isoforms (
     isoform_id                TEXT PRIMARY KEY,
     uniprot_id                TEXT NOT NULL,
     is_canonical              INTEGER NOT NULL DEFAULT 0,
@@ -96,251 +76,26 @@ CREATE TABLE IF NOT EXISTS tb_affected_isoforms (
     exon_boundaries_in_domain_count   INTEGER NOT NULL DEFAULT 0,
     ensembl_transcript_id             TEXT,
     alphafold_id                      TEXT,
+    vsp_domain_events                 TEXT,
+    detection_method                  TEXT,
+    disrupted_motifs                  TEXT,
     created_at                        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
+    FOREIGN KEY (uniprot_id) REFERENCES proteins(uniprot_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_proteins_canonical ON tb_proteins(canonical_uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_proteins_entry     ON tb_proteins(tim_barrel_accession);
-CREATE INDEX IF NOT EXISTS idx_tb_isoforms_uniprot   ON tb_isoforms(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_isoforms_canonical ON tb_isoforms(uniprot_id, is_canonical);
-CREATE INDEX IF NOT EXISTS idx_tb_isoforms_length    ON tb_isoforms(sequence_length);
-CREATE INDEX IF NOT EXISTS idx_tb_affected_uniprot   ON tb_affected_isoforms(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_affected_identity  ON tb_affected_isoforms(identity_percentage);
+CREATE INDEX IF NOT EXISTS idx_proteins_canonical ON proteins(canonical_uniprot_id);
+CREATE INDEX IF NOT EXISTS idx_proteins_entry     ON proteins(tim_barrel_accession);
+CREATE INDEX IF NOT EXISTS idx_isoforms_uniprot   ON isoforms(uniprot_id);
+CREATE INDEX IF NOT EXISTS idx_isoforms_canonical ON isoforms(uniprot_id, is_canonical);
+CREATE INDEX IF NOT EXISTS idx_isoforms_length    ON isoforms(sequence_length);
+CREATE INDEX IF NOT EXISTS idx_affected_uniprot   ON affected_isoforms(uniprot_id);
+CREATE INDEX IF NOT EXISTS idx_affected_identity  ON affected_isoforms(identity_percentage);
 
-CREATE TRIGGER IF NOT EXISTS trg_block_redundant_tb
-BEFORE INSERT ON tb_isoforms
+CREATE TRIGGER IF NOT EXISTS trg_block_redundant
+BEFORE INSERT ON isoforms
 BEGIN
     SELECT CASE
-        WHEN (SELECT canonical_uniprot_id FROM tb_proteins WHERE uniprot_id = NEW.uniprot_id) IS NOT NULL
-        THEN RAISE(ABORT, 'Isoform rejected: protein is redundant')
-    END;
-END;
-
--- ============================================================
--- TIM barrel — Mus musculus
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS tb_proteins_mus_musculus (
-    uniprot_id           TEXT PRIMARY KEY,
-    tim_barrel_accession TEXT NOT NULL,
-    protein_name         TEXT,
-    gene_name            TEXT,
-    organism             TEXT,
-    reviewed             INTEGER,
-    protein_existence    TEXT,
-    annotation_score     INTEGER,
-    canonical_uniprot_id TEXT,
-    created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tim_barrel_accession) REFERENCES tb_entries(accession) ON DELETE CASCADE,
-    FOREIGN KEY (canonical_uniprot_id) REFERENCES tb_proteins_mus_musculus(uniprot_id)
-);
-
-CREATE TABLE IF NOT EXISTS tb_isoforms_mus_musculus (
-    isoform_id          TEXT PRIMARY KEY,
-    uniprot_id          TEXT NOT NULL,
-    is_canonical        INTEGER NOT NULL DEFAULT 0,
-    sequence            TEXT NOT NULL,
-    sequence_length     INTEGER NOT NULL,
-    is_fragment         INTEGER NOT NULL DEFAULT 0,
-    exon_count          INTEGER,
-    exon_annotations    TEXT,
-    splice_variants     TEXT,
-    tim_barrel_location TEXT,
-    tim_barrel_sequence TEXT,
-    ensembl_transcript_id     TEXT,
-    alphafold_id        TEXT,
-    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins_mus_musculus(uniprot_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS tb_affected_isoforms_mus_musculus (
-    isoform_id                TEXT PRIMARY KEY,
-    uniprot_id                TEXT NOT NULL,
-    is_canonical              INTEGER NOT NULL DEFAULT 0,
-    sequence                  TEXT NOT NULL,
-    sequence_length           INTEGER NOT NULL,
-    is_fragment               INTEGER NOT NULL DEFAULT 0,
-    exon_count                INTEGER,
-    exon_annotations          TEXT,
-    splice_variants           TEXT,
-    domain_location           TEXT,
-    domain_sequence           TEXT,
-    canonical_domain_location TEXT,
-    canonical_domain_sequence TEXT,
-    identity_percentage       REAL NOT NULL,
-    alignment_score           INTEGER NOT NULL,
-    ensembl_transcript_id           TEXT,
-    alphafold_id              TEXT,
-    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins_mus_musculus(uniprot_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_tb_mm_proteins_canonical ON tb_proteins_mus_musculus(canonical_uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_mm_proteins_entry     ON tb_proteins_mus_musculus(tim_barrel_accession);
-CREATE INDEX IF NOT EXISTS idx_tb_mm_isoforms_uniprot   ON tb_isoforms_mus_musculus(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_mm_isoforms_canonical ON tb_isoforms_mus_musculus(uniprot_id, is_canonical);
-CREATE INDEX IF NOT EXISTS idx_tb_mm_isoforms_length    ON tb_isoforms_mus_musculus(sequence_length);
-CREATE INDEX IF NOT EXISTS idx_tb_mm_affected_uniprot   ON tb_affected_isoforms_mus_musculus(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_mm_affected_identity  ON tb_affected_isoforms_mus_musculus(identity_percentage);
-
-CREATE TRIGGER IF NOT EXISTS trg_block_redundant_tb_mm
-BEFORE INSERT ON tb_isoforms_mus_musculus
-BEGIN
-    SELECT CASE
-        WHEN (SELECT canonical_uniprot_id FROM tb_proteins_mus_musculus WHERE uniprot_id = NEW.uniprot_id) IS NOT NULL
-        THEN RAISE(ABORT, 'Isoform rejected: protein is redundant')
-    END;
-END;
-
--- ============================================================
--- TIM barrel — Rattus norvegicus
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS tb_proteins_rattus_norvegicus (
-    uniprot_id           TEXT PRIMARY KEY,
-    tim_barrel_accession TEXT NOT NULL,
-    protein_name         TEXT,
-    gene_name            TEXT,
-    organism             TEXT,
-    reviewed             INTEGER,
-    protein_existence    TEXT,
-    annotation_score     INTEGER,
-    canonical_uniprot_id TEXT,
-    created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tim_barrel_accession) REFERENCES tb_entries(accession) ON DELETE CASCADE,
-    FOREIGN KEY (canonical_uniprot_id) REFERENCES tb_proteins_rattus_norvegicus(uniprot_id)
-);
-
-CREATE TABLE IF NOT EXISTS tb_isoforms_rattus_norvegicus (
-    isoform_id          TEXT PRIMARY KEY,
-    uniprot_id          TEXT NOT NULL,
-    is_canonical        INTEGER NOT NULL DEFAULT 0,
-    sequence            TEXT NOT NULL,
-    sequence_length     INTEGER NOT NULL,
-    is_fragment         INTEGER NOT NULL DEFAULT 0,
-    exon_count          INTEGER,
-    exon_annotations    TEXT,
-    splice_variants     TEXT,
-    tim_barrel_location TEXT,
-    tim_barrel_sequence TEXT,
-    ensembl_transcript_id     TEXT,
-    alphafold_id        TEXT,
-    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins_rattus_norvegicus(uniprot_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS tb_affected_isoforms_rattus_norvegicus (
-    isoform_id                TEXT PRIMARY KEY,
-    uniprot_id                TEXT NOT NULL,
-    is_canonical              INTEGER NOT NULL DEFAULT 0,
-    sequence                  TEXT NOT NULL,
-    sequence_length           INTEGER NOT NULL,
-    is_fragment               INTEGER NOT NULL DEFAULT 0,
-    exon_count                INTEGER,
-    exon_annotations          TEXT,
-    splice_variants           TEXT,
-    domain_location           TEXT,
-    domain_sequence           TEXT,
-    canonical_domain_location TEXT,
-    canonical_domain_sequence TEXT,
-    identity_percentage       REAL NOT NULL,
-    alignment_score           INTEGER NOT NULL,
-    ensembl_transcript_id           TEXT,
-    alphafold_id              TEXT,
-    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins_rattus_norvegicus(uniprot_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_tb_rn_proteins_canonical ON tb_proteins_rattus_norvegicus(canonical_uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_rn_proteins_entry     ON tb_proteins_rattus_norvegicus(tim_barrel_accession);
-CREATE INDEX IF NOT EXISTS idx_tb_rn_isoforms_uniprot   ON tb_isoforms_rattus_norvegicus(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_rn_isoforms_canonical ON tb_isoforms_rattus_norvegicus(uniprot_id, is_canonical);
-CREATE INDEX IF NOT EXISTS idx_tb_rn_isoforms_length    ON tb_isoforms_rattus_norvegicus(sequence_length);
-CREATE INDEX IF NOT EXISTS idx_tb_rn_affected_uniprot   ON tb_affected_isoforms_rattus_norvegicus(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_rn_affected_identity  ON tb_affected_isoforms_rattus_norvegicus(identity_percentage);
-
-CREATE TRIGGER IF NOT EXISTS trg_block_redundant_tb_rn
-BEFORE INSERT ON tb_isoforms_rattus_norvegicus
-BEGIN
-    SELECT CASE
-        WHEN (SELECT canonical_uniprot_id FROM tb_proteins_rattus_norvegicus WHERE uniprot_id = NEW.uniprot_id) IS NOT NULL
-        THEN RAISE(ABORT, 'Isoform rejected: protein is redundant')
-    END;
-END;
-
--- ============================================================
--- Beta propeller — Homo sapiens
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS bp_proteins (
-    uniprot_id           TEXT PRIMARY KEY,
-    tim_barrel_accession TEXT NOT NULL,
-    protein_name         TEXT,
-    gene_name            TEXT,
-    organism             TEXT,
-    reviewed             INTEGER,
-    protein_existence    TEXT,
-    annotation_score     INTEGER,
-    canonical_uniprot_id TEXT,
-    created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tim_barrel_accession) REFERENCES bp_entries(accession) ON DELETE CASCADE,
-    FOREIGN KEY (canonical_uniprot_id) REFERENCES bp_proteins(uniprot_id)
-);
-
-CREATE TABLE IF NOT EXISTS bp_isoforms (
-    isoform_id          TEXT PRIMARY KEY,
-    uniprot_id          TEXT NOT NULL,
-    is_canonical        INTEGER NOT NULL DEFAULT 0,
-    sequence            TEXT NOT NULL,
-    sequence_length     INTEGER NOT NULL,
-    is_fragment         INTEGER NOT NULL DEFAULT 0,
-    exon_count          INTEGER,
-    exon_annotations    TEXT,
-    splice_variants     TEXT,
-    tim_barrel_location TEXT,
-    tim_barrel_sequence TEXT,
-    ensembl_transcript_id     TEXT,
-    alphafold_id        TEXT,
-    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES bp_proteins(uniprot_id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS bp_affected_isoforms (
-    isoform_id                TEXT PRIMARY KEY,
-    uniprot_id                TEXT NOT NULL,
-    is_canonical              INTEGER NOT NULL DEFAULT 0,
-    sequence                  TEXT NOT NULL,
-    sequence_length           INTEGER NOT NULL,
-    is_fragment               INTEGER NOT NULL DEFAULT 0,
-    exon_count                INTEGER,
-    exon_annotations          TEXT,
-    splice_variants           TEXT,
-    domain_location           TEXT,
-    domain_sequence           TEXT,
-    canonical_domain_location TEXT,
-    canonical_domain_sequence TEXT,
-    identity_percentage       REAL NOT NULL,
-    alignment_score           INTEGER NOT NULL,
-    ensembl_transcript_id           TEXT,
-    alphafold_id              TEXT,
-    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES bp_proteins(uniprot_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_bp_proteins_canonical ON bp_proteins(canonical_uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_bp_proteins_entry     ON bp_proteins(tim_barrel_accession);
-CREATE INDEX IF NOT EXISTS idx_bp_isoforms_uniprot   ON bp_isoforms(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_bp_isoforms_canonical ON bp_isoforms(uniprot_id, is_canonical);
-CREATE INDEX IF NOT EXISTS idx_bp_isoforms_length    ON bp_isoforms(sequence_length);
-CREATE INDEX IF NOT EXISTS idx_bp_affected_uniprot   ON bp_affected_isoforms(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_bp_affected_identity  ON bp_affected_isoforms(identity_percentage);
-
-CREATE TRIGGER IF NOT EXISTS trg_block_redundant_bp
-BEFORE INSERT ON bp_isoforms
-BEGIN
-    SELECT CASE
-        WHEN (SELECT canonical_uniprot_id FROM bp_proteins WHERE uniprot_id = NEW.uniprot_id) IS NOT NULL
+        WHEN (SELECT canonical_uniprot_id FROM proteins WHERE uniprot_id = NEW.uniprot_id) IS NOT NULL
         THEN RAISE(ABORT, 'Isoform rejected: protein is redundant')
     END;
 END;
@@ -349,7 +104,7 @@ END;
 -- Ensembl transcript expansion — TIM barrel, Homo sapiens
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS tb_ensembl_transcripts (
+CREATE TABLE IF NOT EXISTS ensembl_transcripts (
     enst_id              TEXT PRIMARY KEY,
     ensg_id              TEXT,
     ensp_id              TEXT,
@@ -364,10 +119,10 @@ CREATE TABLE IF NOT EXISTS tb_ensembl_transcripts (
     duplicate_enst_id    TEXT,
     exon_annotations     TEXT,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
+    FOREIGN KEY (uniprot_id) REFERENCES proteins(uniprot_id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS tb_ensembl_affected (
+CREATE TABLE IF NOT EXISTS ensembl_affected (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,
     enst_id                   TEXT NOT NULL,
     uniprot_id                TEXT NOT NULL,
@@ -381,17 +136,18 @@ CREATE TABLE IF NOT EXISTS tb_ensembl_affected (
     insertion_detected                INTEGER NOT NULL DEFAULT 0,
     exon_boundary_in_domain           INTEGER NOT NULL DEFAULT 0,
     exon_boundaries_in_domain_count   INTEGER NOT NULL DEFAULT 0,
+    disrupted_motifs                  TEXT,
     created_at                        DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (enst_id)    REFERENCES tb_ensembl_transcripts(enst_id) ON DELETE CASCADE,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
+    FOREIGN KEY (enst_id)    REFERENCES ensembl_transcripts(enst_id) ON DELETE CASCADE,
+    FOREIGN KEY (uniprot_id) REFERENCES proteins(uniprot_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_enst_uniprot   ON tb_ensembl_transcripts(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_enst_gene      ON tb_ensembl_transcripts(ensg_id);
-CREATE INDEX IF NOT EXISTS idx_tb_enst_dup       ON tb_ensembl_transcripts(duplicate_isoform_id);
-CREATE INDEX IF NOT EXISTS idx_tb_enst_aff_enst  ON tb_ensembl_affected(enst_id);
-CREATE INDEX IF NOT EXISTS idx_tb_enst_aff_uid   ON tb_ensembl_affected(uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_tb_enst_aff_ident ON tb_ensembl_affected(alignment_identity);
+CREATE INDEX IF NOT EXISTS idx_enst_uniprot   ON ensembl_transcripts(uniprot_id);
+CREATE INDEX IF NOT EXISTS idx_enst_gene      ON ensembl_transcripts(ensg_id);
+CREATE INDEX IF NOT EXISTS idx_enst_dup       ON ensembl_transcripts(duplicate_isoform_id);
+CREATE INDEX IF NOT EXISTS idx_enst_aff_enst  ON ensembl_affected(enst_id);
+CREATE INDEX IF NOT EXISTS idx_enst_aff_uid   ON ensembl_affected(uniprot_id);
+CREATE INDEX IF NOT EXISTS idx_enst_aff_ident ON ensembl_affected(alignment_identity);
 
 -- ============================================================
 -- TIM barrel canonical analysis — Homo sapiens
@@ -400,22 +156,25 @@ CREATE INDEX IF NOT EXISTS idx_tb_enst_aff_ident ON tb_ensembl_affected(alignmen
 -- motif_annotations: [{motif, start, end, beta_start, beta_end, alpha_start, alpha_end}] x8
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS tb_canonical_analysis (
-    uniprot_id          TEXT PRIMARY KEY,
-    gene_name           TEXT,
-    sequence            TEXT NOT NULL,
-    domain_start        INTEGER,
-    domain_end          INTEGER,
-    domain_sequence     TEXT,
-    exon_annotations    TEXT,
-    motif_annotations   TEXT,
-    dssp_source         TEXT,
-    hmmer_source        TEXT,
-    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uniprot_id) REFERENCES tb_proteins(uniprot_id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS canonical_analysis (
+    uniprot_id            TEXT PRIMARY KEY,
+    gene_name             TEXT,
+    sequence              TEXT NOT NULL,
+    domain_start          INTEGER,
+    domain_end            INTEGER,
+    domain_sequence       TEXT,
+    exon_annotations      TEXT,
+    motif_annotations     TEXT,
+    dssp_source           TEXT,
+    hmmer_source          TEXT,
+    hmmer_annotations     TEXT,
+    pdb_motif_annotations TEXT,
+    pdb_source            TEXT,
+    created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (uniprot_id) REFERENCES proteins(uniprot_id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_can_gene ON tb_canonical_analysis(gene_name);
+CREATE INDEX IF NOT EXISTS idx_can_gene ON canonical_analysis(gene_name);
 """
 
 

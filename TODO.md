@@ -1,19 +1,19 @@
 # Project TODO
 
-## Current state (2025-05-06)
+## Current state (2026-05-08)
 
 ### Data collected
 | Table | Count |
 |---|---|
 | TIM barrel families (Pfam/InterPro + CATH Gene3D) | 73 |
-| Canonical human proteins (`tb_proteins`) | 1,174 |
-| Canonical isoforms (`tb_isoforms`) | 1,174 |
-| Alternative isoforms | 249 |
-| AS-affected isoforms (`tb_affected_isoforms`) | 37 |
-| Ensembl novel transcripts (`tb_ensembl_transcripts`) | 1,097 unique |
-| AS-affected Ensembl transcripts (`tb_ensembl_affected`) | 359 |
+| Canonical human proteins (`proteins`) | 1,174 |
+| Canonical isoforms (`isoforms`) | 1,174 |
+| Alternative isoforms | 224 |
+| AS-affected isoforms (`affected_isoforms`) | 132 (VSP-based detection) |
+| Ensembl novel transcripts (`ensembl_transcripts`) | 1,097 unique |
+| AS-affected Ensembl transcripts (`ensembl_affected`) | 359 |
 
-### Structural annotation (`tb_canonical_analysis`, 810 proteins)
+### Structural annotation (`canonical_analysis`, 810 proteins)
 | Step | Method | Result |
 |---|---|---|
 | Motif annotation | AlphaFold DSSP | 386 with full 8 motifs, 307 partial, 46 no structure |
@@ -26,15 +26,20 @@
 
 ### High priority
 
-- [ ] **Annotate motif locations for AS-affected isoforms**
-  For each of the 37 UniProt AS-affected isoforms and 359 Ensembl AS-affected transcripts,
-  map each AS event (exon skipping, insertion, substitution) onto the canonical motif
-  coordinates to determine which of the 8 β-α repeat units is disrupted. Store as
-  `disrupted_motifs` JSON in `tb_affected_isoforms` / `tb_ensembl_affected`.
+- [x] **Annotate motif locations for AS-affected isoforms**
+  Done in `scripts/annotate_disrupted_motifs.py`. UniProt: VSP overlap_start/end mapped to
+  motifs (132 annotated). Ensembl: position-by-position sequence comparison of canonical vs
+  alt domain sequence, changed regions mapped to motifs (330 annotated, 11 skipped — no
+  motif data). `disrupted_motifs` column added to both tables.
 
-- [ ] **Collect missing Gene3D TIM barrel proteins**
-  ~292 proteins classified under CATH Gene3D TIM barrel entries were not collected
-  in the initial run. Identify the missing entries and re-run collection.
+- [x] **Collect missing Gene3D TIM barrel proteins**
+  Investigated: all proteins reachable via Gene3D entries are already in proteins
+  under their Pfam/InterPro accessions (verified for the two largest gaps: G3DSA:3.20.20.70
+  has 293 proteins in the API — all 293 already in DB; G3DSA:3.20.20.190 has 118 — all 118
+  in DB). The collection pipeline deduplicates by uniprot_id so they were collected
+  via the richer Pfam/InterPro entries. No action needed.
+
+### Low priority
 
 - [ ] **Restore missing WD40 / beta-propeller proteins**
   ~1,500 beta-propeller proteins were lost when `bp_entries` was cleaned up.
@@ -47,19 +52,14 @@
   Determine whether disruptions are uniform or biased toward specific barrel positions
   (e.g. motifs 1–2 vs. 7–8).
 
-- [ ] **Exon–motif boundary overlap**
-  Cross-reference `exon_annotations` positions with `motif_annotations` positions
-  to identify exon boundaries that fall precisely at β→loop or loop→α transitions.
+- [x] **Exon–motif boundary overlap**
+  Done in `scripts/analyze_exon_junctions.py`. Q1 (all domain junctions) and Q2
+  (AS-exploited junctions) both classify every junction against the 8-motif structure.
+  Key finding: alpha helices are the most enriched element in gene structure (1.56x);
+  AS events show near-neutral distribution relative to that baseline (see `results.md`).
 
-- [ ] **Extend structural annotation to mouse and rat**
-  Run `build_canonical_analysis.py`, `annotate_motifs.py`, and validation scripts
-  for `tb_proteins_mus_musculus` and `tb_proteins_rattus_norvegicus`.
-
-- [ ] **Write motif-disruption mapping script**
-  Join `tb_canonical_analysis.motif_annotations` with `tb_affected_isoforms.domain_location`
-  and the VSP splice variant coordinates to determine which of the 8 β-α units each AS event
-  overlaps. `domain_location` already exists in `tb_affected_isoforms`; the missing piece is
-  the overlap logic and `disrupted_motifs` storage. Same for `tb_ensembl_affected`.
+- [x] **Write motif-disruption mapping script**
+  Done — see `scripts/annotate_disrupted_motifs.py` and the high-priority item above.
 
 - [ ] **Investigate partial barrels (7-motif proteins)**
   116 proteins show 7 DSSP motifs; HMMs confirm ~85% are genuine TIM barrels. The missing
@@ -68,27 +68,28 @@
   `identify_ba_motifs()` to see how many recover a full 8th motif.
 
 - [ ] **Export annotated dataset to CSV**
-  Write an export script (or QueryEngine method) that joins `tb_canonical_analysis`,
-  `tb_proteins`, `tb_affected_isoforms`, and `tb_ensembl_affected` into a tidy flat CSV
+  Write an export script (or QueryEngine method) that joins `canonical_analysis`,
+  `proteins`, `affected_isoforms`, and `ensembl_affected` into a tidy flat CSV
   suitable for R / pandas analysis and sharing with supervisors.
 
 ### Infrastructure
 
-- [ ] **Fix schema.py to include all runtime-added columns**
-  `hmmer_annotations`, `hmmer_source`, `pdb_motif_annotations`, and `pdb_source` are
-  added via `ALTER TABLE` inside script `ensure_columns()` calls but are absent from the
-  `CREATE TABLE` DDL in `schema.py`. A fresh `init_db()` produces a schema that diverges
-  from the live DB, breaking reruns from scratch.
+- [x] **Fix schema.py to include all runtime-added columns**
+  Added `hmmer_annotations`, `pdb_motif_annotations`, `pdb_source` to `canonical_analysis`;
+  `vsp_domain_events`, `detection_method`, `disrupted_motifs` to `affected_isoforms`;
+  `disrupted_motifs` to `ensembl_affected`. DDL now matches live DB.
 
-- [ ] **Add sanity-check for PDB coordinate mapping**
-  The `validate_pdb_experimental.py` offset logic (`min_uni + shift`) was verified on
-  P00813 but not systematically. Write a check that, for all 86 annotated proteins,
-  confirms that the first and last motif positions fall within `[domain_start, domain_end]`
-  and flag any that don't (possible insertion-code or non-standard chain numbering issues).
+- [x] **Add sanity-check for PDB coordinate mapping**
+  `check_pdb_coordinates()` added to `scripts/validate_pdb_experimental.py`. Runs
+  automatically at the end of the script; flags any protein whose motif span falls
+  outside `[domain_start, domain_end]`. (PDB annotations currently absent from DB —
+  re-run `validate_pdb_experimental.py` to regenerate them.)
 
-- [ ] **Add tests for motif annotator**
-  Unit tests for `identify_ba_motifs()` covering: clean 8-motif barrel, partial
-  barrel, merged strands/helices (MERGE_GAP), edge cases (domain at protein ends).
+- [x] **Add tests for motif annotator**
+  16 tests in `tests/test_motif_annotator.py`: clean 8-motif barrel, partial barrel,
+  MERGE_GAP fusion, gap-too-large separation, domain offset, protein-boundary edge
+  cases, min-length filtering for strands and helices.
 
-- [ ] **Add tests for `build_canonical_analysis._reformat_exon_annotations()`**
-  Cover: single exon, multi-exon, unsorted boundaries, seq_len at boundary.
+- [x] **Add tests for `build_canonical_analysis._reformat_exon_annotations()`**
+  8 tests in same file: single exon, multi-exon, unsorted boundaries, boundary at
+  seq_len, sequential numbering, first starts at 1, last ends at seq_len, contiguous.

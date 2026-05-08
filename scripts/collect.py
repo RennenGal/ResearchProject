@@ -4,7 +4,7 @@ Run the protein data collection pipeline.
 
 Usage
 -----
-Full collection from scratch (TIM barrel, human):
+Full collection from scratch:
     python scripts/collect.py
 
 Resume isoform collection for proteins not yet processed:
@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.collector.data_collector import DataCollector
-from protein_data_collector.config import get_config, DOMAINS, ORGANISMS
+from protein_data_collector.config import get_config
 
 
 def setup_logging(log_file: str = None, level: str = "INFO") -> None:
@@ -41,13 +41,7 @@ def setup_logging(log_file: str = None, level: str = "INFO") -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Collect domain protein data")
-    parser.add_argument("--domain", default="tim_barrel",
-                        choices=list(DOMAINS),
-                        help="Domain to collect data for (default: tim_barrel)")
-    parser.add_argument("--organism", default="homo_sapiens",
-                        choices=list(ORGANISMS),
-                        help="Organism to collect data for (default: homo_sapiens)")
+    parser = argparse.ArgumentParser(description="Collect TIM barrel protein data (Homo sapiens)")
     parser.add_argument("--resume", action="store_true",
                         help="Only collect isoforms for proteins not yet processed")
     parser.add_argument("--collect-proteins", action="store_true",
@@ -67,13 +61,8 @@ def main() -> None:
 
     db_path = args.db or get_config().db_path
     logger.info("Database : %s", db_path)
-    logger.info("Domain   : %s", args.domain)
-    logger.info("Organism : %s", args.organism)
 
-    if args.domain == "beta_propeller" and args.organism != "homo_sapiens":
-        parser.error("beta_propeller is only supported for homo_sapiens")
-
-    collector = DataCollector(db_path=db_path, domain=args.domain, organism=args.organism)
+    collector = DataCollector(db_path=db_path, domain="tim_barrel", organism="homo_sapiens")
 
     if args.collect_proteins:
         logger.info("Collecting entries and proteins (Phase 1+2 only)...")

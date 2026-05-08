@@ -2,7 +2,7 @@
 """
 Validate TIM barrel motif annotations using experimental PDB structures.
 
-For each protein in tb_canonical_analysis, queries the PDBe best_structures
+For each protein in canonical_analysis, queries the PDBe best_structures
 API to find the highest-quality experimental structure (X-ray or EM, resolution
 <= 3.0 Å) that covers the TIM barrel domain.  The selected structure is
 downloaded from RCSB, filtered to the relevant chain, run through pydssp, and
@@ -20,7 +20,7 @@ converts a PDB auth_seq_num to a UniProt position:
 
     uniprot_pos = auth_seq_num + offset
 
-Results stored in tb_canonical_analysis
+Results stored in canonical_analysis
 ----------------------------------------
     pdb_motif_annotations : JSON — same format as motif_annotations
     pdb_source            : "<PDB_ID>_<chain>_<resolution>Å"
@@ -73,14 +73,14 @@ _ACCEPTED_METHODS = {"X-ray diffraction", "Electron Microscopy"}
 # ---------------------------------------------------------------------------
 
 def ensure_columns(conn: sqlite3.Connection) -> None:
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(tb_canonical_analysis)")}
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(canonical_analysis)")}
     for col, typedef in [
         ("pdb_motif_annotations", "TEXT"),
         ("pdb_source",            "TEXT"),
     ]:
         if col not in cols:
-            conn.execute(f"ALTER TABLE tb_canonical_analysis ADD COLUMN {col} {typedef}")
-            logger.info("Added %s to tb_canonical_analysis", col)
+            conn.execute(f"ALTER TABLE canonical_analysis ADD COLUMN {col} {typedef}")
+            logger.info("Added %s to canonical_analysis", col)
     conn.commit()
 
 
@@ -330,7 +330,7 @@ def run(
     where = "" if rerun else "AND pdb_motif_annotations IS NULL AND pdb_source IS NULL"
     query = f"""
         SELECT uniprot_id, domain_start, domain_end
-        FROM tb_canonical_analysis
+        FROM canonical_analysis
         WHERE domain_start IS NOT NULL AND domain_end IS NOT NULL
           {where}
         ORDER BY uniprot_id
@@ -358,7 +358,7 @@ def run(
         if entry is None:
             stats["no_structure"] += 1
             conn.execute(
-                "UPDATE tb_canonical_analysis SET pdb_source='no_structure' WHERE uniprot_id=?",
+                "UPDATE canonical_analysis SET pdb_source='no_structure' WHERE uniprot_id=?",
                 (uid,),
             )
             if i % 100 == 0:
@@ -374,7 +374,7 @@ def run(
         if pdb_text is None:
             stats["download_failed"] += 1
             conn.execute(
-                "UPDATE tb_canonical_analysis SET pdb_source='download_failed' WHERE uniprot_id=?",
+                "UPDATE canonical_analysis SET pdb_source='download_failed' WHERE uniprot_id=?",
                 (uid,),
             )
             if i % 100 == 0:
@@ -388,7 +388,7 @@ def run(
         if motifs is None:
             stats["dssp_failed"] += 1
             conn.execute("""
-                UPDATE tb_canonical_analysis
+                UPDATE canonical_analysis
                 SET pdb_source='dssp_failed'
                 WHERE uniprot_id=?
             """, (uid,))
@@ -399,7 +399,7 @@ def run(
             else:
                 stats["partial"] += 1
             conn.execute("""
-                UPDATE tb_canonical_analysis
+                UPDATE canonical_analysis
                 SET pdb_motif_annotations=?, pdb_source=?
                 WHERE uniprot_id=?
             """, (json.dumps(motifs), source, uid))
@@ -429,7 +429,7 @@ def print_comparison(conn: sqlite3.Connection) -> None:
             json_array_length(motif_annotations)     AS af_motifs,
             json_array_length(pdb_motif_annotations) AS pdb_motifs,
             pdb_source
-        FROM tb_canonical_analysis
+        FROM canonical_analysis
         WHERE pdb_motif_annotations IS NOT NULL
     """).fetchall()
 
@@ -457,21 +457,21 @@ def print_comparison(conn: sqlite3.Connection) -> None:
         print(f"  {label:>10}  {b['total']:>9}  {b['agree8']:>7}  {pct:>6.0f}%  {med:>8.1f}")
 
     total_pdb = conn.execute(
-        "SELECT COUNT(*) FROM tb_canonical_analysis WHERE pdb_motif_annotations IS NOT NULL"
+        "SELECT COUNT(*) FROM canonical_analysis WHERE pdb_motif_annotations IS NOT NULL"
     ).fetchone()[0]
     pdb8 = conn.execute(
-        "SELECT COUNT(*) FROM tb_canonical_analysis WHERE json_array_length(pdb_motif_annotations)=8"
+        "SELECT COUNT(*) FROM canonical_analysis WHERE json_array_length(pdb_motif_annotations)=8"
     ).fetchone()[0]
     no_struct = conn.execute(
-        "SELECT COUNT(*) FROM tb_canonical_analysis WHERE pdb_source='no_structure'"
+        "SELECT COUNT(*) FROM canonical_analysis WHERE pdb_source='no_structure'"
     ).fetchone()[0]
     af8_pdb8 = conn.execute("""
-        SELECT COUNT(*) FROM tb_canonical_analysis
+        SELECT COUNT(*) FROM canonical_analysis
         WHERE json_array_length(motif_annotations)=8
           AND json_array_length(pdb_motif_annotations)=8
     """).fetchone()[0]
     af8_total = conn.execute("""
-        SELECT COUNT(*) FROM tb_canonical_analysis
+        SELECT COUNT(*) FROM canonical_analysis
         WHERE json_array_length(motif_annotations)=8
           AND pdb_motif_annotations IS NOT NULL
     """).fetchone()[0]
@@ -484,6 +484,59 @@ def print_comparison(conn: sqlite3.Connection) -> None:
         print(f"  AF=8 confirmed by PDB=8               : {af8_pdb8} / {af8_total} "
               f"({100*af8_pdb8/af8_total:.0f}%)")
     print(f"{'='*76}")
+
+
+# ---------------------------------------------------------------------------
+# Coordinate sanity check
+# ---------------------------------------------------------------------------
+
+def check_pdb_coordinates(conn: sqlite3.Connection) -> int:
+    """
+    For every protein with pdb_motif_annotations, verify that the first and
+    last annotated motif positions fall within [domain_start, domain_end].
+    Prints a report and returns the number of flagged proteins.
+    """
+    rows = conn.execute("""
+        SELECT uniprot_id, gene_name, domain_start, domain_end,
+               pdb_motif_annotations, pdb_source
+        FROM canonical_analysis
+        WHERE pdb_motif_annotations IS NOT NULL
+          AND pdb_source NOT IN ('no_structure', 'download_failed', 'dssp_failed')
+          AND domain_start IS NOT NULL
+    """).fetchall()
+
+    import json as _json
+    flagged = []
+    for uid, gene, ds, de, pdb_json, source in rows:
+        motifs = _json.loads(pdb_json)
+        if not motifs:
+            continue
+        first_pos = motifs[0]["beta_start"]
+        last_pos  = motifs[-1]["alpha_end"]
+        if first_pos < ds or last_pos > de:
+            flagged.append({
+                "uniprot_id":  uid,
+                "gene_name":   gene,
+                "domain":      f"{ds}-{de}",
+                "motif_span":  f"{first_pos}-{last_pos}",
+                "pdb_source":  source,
+            })
+
+    print(f"\n{'='*60}")
+    print(f"  PDB coordinate sanity check")
+    print(f"{'='*60}")
+    print(f"  Proteins checked : {len(rows)}")
+    print(f"  Flagged          : {len(flagged)}")
+    if flagged:
+        print(f"\n  {'UniProt':<12}  {'Gene':<10}  {'Domain':<12}  {'Motif span':<12}  Source")
+        print(f"  {'-'*12}  {'-'*10}  {'-'*12}  {'-'*12}  {'-'*20}")
+        for f in flagged:
+            print(f"  {f['uniprot_id']:<12}  {(f['gene_name'] or ''):<10}  "
+                  f"{f['domain']:<12}  {f['motif_span']:<12}  {f['pdb_source']}")
+    else:
+        print("  All motif positions fall within [domain_start, domain_end].")
+    print(f"{'='*60}")
+    return len(flagged)
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +569,7 @@ def main() -> None:
     ensure_columns(conn)
     run(conn, cache_dir, args.resolution, args.rerun, args.limit)
     print_comparison(conn)
+    check_pdb_coordinates(conn)
 
     conn.close()
 

@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Build (or rebuild) the {domain}_affected_isoforms analysis table.
+Build (or rebuild) affected_isoforms.
 
-For each alternative, non-fragment isoform, performs an ungapped local
-alignment of the canonical domain sequence against the isoform and
-inserts rows where 12.5% <= identity < 95%.
+Primary detection: VSP overlap — any alternative isoform with at least one
+UniProt VSP feature overlapping the canonical domain is included.
+Fallback for isoforms with no VSP data: sliding window (12.5% <= id < 95%).
 
 Usage:
     python scripts/build_affected_isoforms.py
-    python scripts/build_affected_isoforms.py --domain beta_propeller
     python scripts/build_affected_isoforms.py --db db/protein_data.db
 """
 
@@ -22,17 +21,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from protein_data_collector.analysis.tim_barrel_alignment import populate_tim_barrel_isoforms
 from protein_data_collector.database.connection import get_connection
 from protein_data_collector.database.schema import init_db
-from protein_data_collector.config import get_config, DOMAINS, ORGANISMS
+from protein_data_collector.config import get_config
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build affected_isoforms analysis table")
-    parser.add_argument("--domain", default="tim_barrel",
-                        choices=list(DOMAINS),
-                        help="Domain to analyse (default: tim_barrel)")
-    parser.add_argument("--organism", default="homo_sapiens",
-                        choices=list(ORGANISMS),
-                        help="Organism to analyse (default: homo_sapiens)")
     parser.add_argument("--db", default=None, help="Database path (default: from config)")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
@@ -43,33 +36,21 @@ def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    if args.domain == "beta_propeller" and args.organism != "homo_sapiens":
-        parser.error("beta_propeller is only supported for homo_sapiens")
-
-    domain_cfg   = DOMAINS[args.domain]
-    organism_cfg = ORGANISMS[args.organism]
-    db_path      = args.db or get_config().db_path
-
-    isoform_table  = organism_cfg.isoform_table(domain_cfg)
-    output_table   = organism_cfg.affected_isoforms_table(domain_cfg)
+    db_path = args.db or get_config().db_path
 
     with get_connection(db_path) as conn:
         init_db(conn)
-        inserted, skipped_identical, skipped_absent, insertions = populate_tim_barrel_isoforms(
+        inserted, skipped_no_overlap, skipped_fallback = populate_tim_barrel_isoforms(
             conn,
-            isoform_table=isoform_table,
-            output_table=output_table,
+            isoform_table="isoforms",
+            output_table="affected_isoforms",
         )
 
     print(f"\n{'='*55}")
-    print(f"  Domain   : {domain_cfg.display_name}")
-    print(f"  Organism : {organism_cfg.display_name}")
-    print(f"{'='*55}")
     print(f"  AS-affected domain isoforms   : {inserted}")
-    print(f"    of which insertion-detected : {insertions}")
-    print(f"  Skipped — domain >= 95%       : {skipped_identical}")
-    print(f"  Skipped — domain absent       : {skipped_absent}")
-    print(f"  Total alternative isoforms    : {inserted + skipped_identical + skipped_absent}")
+    print(f"  Skipped — no domain overlap   : {skipped_no_overlap}")
+    print(f"  Skipped — no VSP + low id     : {skipped_fallback}")
+    print(f"  Total alternative isoforms    : {inserted + skipped_no_overlap + skipped_fallback}")
     print(f"{'='*55}")
 
 
