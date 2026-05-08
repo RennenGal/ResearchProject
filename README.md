@@ -270,14 +270,41 @@ python scripts/validate_pdb_experimental.py --resolution 2.5
 
 ```bash
 python scripts/analyze_exon_junctions.py
+python scripts/analyze_exon_junctions.py --full-only   # restrict to 8-motif proteins
 ```
 
 Answers two questions:
-- **Q1**: How are constitutive exon junctions distributed across the 8 β-α motif elements (gene architecture)?
+- **Q1**: How are constitutive exon junctions distributed across the β-α motif elements (gene architecture)?
 - **Q2**: Which junctions are exploited by AS events (VSP spans cross-referenced against canonical junctions)?
 
-Key finding: α-helices are the most enriched element in gene structure (1.56×); AS events show
-near-neutral distribution relative to that baseline. See `results.md` for full results.
+Key finding: α-helices are the most enriched element in gene structure (1.49×), robust across all
+domain-length bins. AS events show near-neutral distribution relative to that baseline.
+See `results.md` for full results.
+
+### Domain-length subgroup analysis
+
+```bash
+python scripts/analyze_domain_length_subgroups.py
+python scripts/analyze_domain_length_subgroups.py --min 200 --max 400 --step 50
+```
+
+Splits proteins into 50 aa domain-length bins and computes enrichment per structural element in
+each bin, testing whether the Q1 signal is an artefact of domain-length heterogeneity.
+
+### Junction alignment plots
+
+```bash
+# Four panels: 200-400 aa in 50 aa bins
+python scripts/plot_junction_alignment.py
+
+# Single panel: all proteins
+python scripts/plot_junction_alignment.py --min 1 --max 9999 --no-subgroups \
+    --out figures/junction_alignment_all.png
+```
+
+One row per protein (sorted by domain length), coloured dots mark exon junction positions
+normalised to [0, 1] within the domain. Background stripes show structural element positions
+from a representative protein. Output written to `figures/`.
 
 ---
 
@@ -360,7 +387,9 @@ scripts/
   annotate_motifs.py            AlphaFold + pydssp motif annotation
   cross_validate_hmmer.py       Per-family HMM cross-validation
   validate_pdb_experimental.py  Experimental PDB validation via PDBe + RCSB
-  analyze_exon_junctions.py     Q1/Q2 exon–motif junction analysis
+  analyze_exon_junctions.py          Q1/Q2 exon–motif junction analysis
+  analyze_domain_length_subgroups.py Junction enrichment by domain-length bin
+  plot_junction_alignment.py         Junction alignment dot plot (per-protein rows)
 
 tests/
   test_models.py
