@@ -175,6 +175,13 @@ CREATE TABLE IF NOT EXISTS canonical_analysis (
 );
 
 CREATE INDEX IF NOT EXISTS idx_can_gene ON canonical_analysis(gene_name);
+
+-- ============================================================
+-- Convenience views
+-- ============================================================
+
+CREATE VIEW IF NOT EXISTS canonical_proteins AS
+SELECT * FROM proteins WHERE canonical_uniprot_id IS NULL;
 """
 
 

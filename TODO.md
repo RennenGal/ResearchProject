@@ -6,9 +6,10 @@
 | Table | Count |
 |---|---|
 | TIM barrel families (Pfam/InterPro + CATH Gene3D) | 73 |
-| Canonical human proteins (`proteins`) | 1,174 |
-| Canonical isoforms (`isoforms`) | 1,174 |
-| Alternative isoforms | 224 |
+| Proteins total collected | 1,174 |
+| Canonical proteins (deduplicated) | 399 (193 reviewed + 206 TrEMBL) |
+| Canonical isoforms (`isoforms`) | 399 |
+| Alternative isoforms (canonical proteins) | 249 |
 | AS-affected isoforms (`affected_isoforms`) | 132 (VSP-based detection) |
 | Ensembl novel transcripts (`ensembl_transcripts`) | 1,097 unique |
 | AS-affected Ensembl transcripts (`ensembl_affected`) | 359 |
@@ -73,6 +74,17 @@
   suitable for R / pandas analysis and sharing with supervisors.
 
 ### Infrastructure
+
+- [x] **Backfill protein metadata and fix deduplication**
+  Root cause: `interpro_collector.py` never fetched `protein_name`, `reviewed`, or
+  `annotation_score` from UniProt, so `deduplicate_proteins()` (which groups by
+  `protein_name`) had never functioned. Fixed by:
+  - Adding `batch_protein_metadata()` to `UniProtClient` (fields: protein_name, reviewed,
+    annotation_score; handles both `recommendedName` and `submissionNames` for TrEMBL).
+  - Writing `scripts/backfill_protein_metadata.py` which fetches metadata for all proteins
+    with NULL fields and then re-runs deduplication.
+  Result: 1,174 total → 399 canonical (193 Swiss-Prot reviewed + 206 TrEMBL); 775 redundant.
+  B4DHM2 (the triggering case) correctly marked redundant to Q9NZK5.
 
 - [x] **Fix schema.py to include all runtime-added columns**
   Added `hmmer_annotations`, `pdb_motif_annotations`, `pdb_source` to `canonical_analysis`;

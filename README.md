@@ -16,11 +16,18 @@ SQLite database; annotates the (βα)₈ repeat motifs; maps splice events onto 
 | | Count |
 |---|---|
 | TIM barrel families (38 Pfam/InterPro + 35 Gene3D CATH) | 73 |
-| Proteins — canonical | 1,174 |
-| Isoforms — canonical | 1,174 |
-| Isoforms — alternative | 224 |
+| Proteins — canonical (`canonical_proteins` view) | 399 |
+| &nbsp;&nbsp;of which Swiss-Prot reviewed | 193 |
+| &nbsp;&nbsp;of which TrEMBL unreviewed | 206 |
+| Isoforms — canonical | 399 |
+| Isoforms — alternative | 249 |
 | **AS-affected isoforms (domain disrupted)** | **132** |
 | Genes with ≥1 AS-affected isoform | 75 |
+
+The `proteins` table holds all 1,174 collected entries. The `canonical_proteins` view
+filters to `canonical_uniprot_id IS NULL` — the best representative per
+`(protein_name, organism)` group ranked by reviewed > annotation_score > isoform count.
+775 proteins are marked redundant (e.g. TrEMBL fragments superseded by a Swiss-Prot entry).
 
 AS-affected detection is VSP-based: any alternative isoform with at least one UniProt VSP feature
 whose coordinates overlap `[domain_start, domain_end]` is included.
@@ -62,6 +69,8 @@ proteins
   protein_existence, annotation_score,
   canonical_uniprot_id  -- NULL = canonical representative
                         -- non-NULL = redundant, points to canonical
+
+canonical_proteins      -- VIEW: SELECT * FROM proteins WHERE canonical_uniprot_id IS NULL
 ```
 
 ### Isoforms

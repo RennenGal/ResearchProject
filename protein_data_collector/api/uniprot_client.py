@@ -20,6 +20,7 @@ _UNIPROT_FIELDS = ",".join([
 ])
 
 _GENE_NAME_BATCH = 100  # UniProt limits OR conditions to 100 per search query
+_METADATA_BATCH  = 100
 
 
 class UniProtClient:
@@ -83,6 +84,77 @@ class UniProtClient:
                         result[uid] = genes[0]["geneName"]["value"]
 
             logger.debug("Gene name batch %d/%d done", min(i + _GENE_NAME_BATCH, len(uniprot_ids)), len(uniprot_ids))
+
+        return result
+
+    def batch_protein_metadata(
+        self, uniprot_ids: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Fetch protein_name, reviewed, and annotation_score for each accession.
+
+        Returns {uniprot_id: {"protein_name": str|None, "reviewed": int, "annotation_score": int|None}}.
+        Missing accessions are mapped to {"protein_name": None, "reviewed": 0, "annotation_score": None}.
+        """
+        default: Dict[str, Any] = {"protein_name": None, "reviewed": 0, "annotation_score": None}
+        result: Dict[str, Dict[str, Any]] = {uid: dict(default) for uid in uniprot_ids}
+        search_url = f"{self.cfg.uniprot_base_url}/search"
+
+        for i in range(0, len(uniprot_ids), _METADATA_BATCH):
+            chunk = uniprot_ids[i:i + _METADATA_BATCH]
+            query = " OR ".join(f"accession:{uid}" for uid in chunk)
+            params = {
+                "query":  query,
+                "fields": "accession,protein_name,reviewed,annotation_score",
+                "format": "json",
+                "size":   len(chunk),
+            }
+            try:
+                resp = self.session.get(search_url, params=params, timeout=self.cfg.request_timeout)
+                time.sleep(self.cfg.request_delay)
+            except requests.exceptions.RequestException as e:
+                logger.warning("Network error fetching metadata (chunk %d): %s", i, e)
+                continue
+
+            if not resp.ok:
+                logger.warning("UniProt search returned %d for metadata chunk %d", resp.status_code, i)
+                continue
+
+            for entry in resp.json().get("results", []):
+                uid = entry.get("primaryAccession")
+                if not uid or uid not in result:
+                    continue
+
+                # protein_name: prefer recommendedName, fall back to submissionNames (TrEMBL)
+                desc = entry.get("proteinDescription", {})
+                rec  = desc.get("recommendedName", {})
+                name: Optional[str] = None
+                if rec:
+                    name = rec.get("fullName", {}).get("value")
+                if not name:
+                    submitted = desc.get("submissionNames", [])
+                    if submitted:
+                        name = submitted[0].get("fullName", {}).get("value")
+
+                # reviewed: only "UniProtKB reviewed (Swiss-Prot)" → 1; "unreviewed" must NOT match
+                entry_type = entry.get("entryType", "")
+                reviewed = 1 if "swiss-prot" in entry_type.lower() else 0
+
+                # annotation_score: integer 1-5
+                score_raw = entry.get("annotationScore")
+                ann_score: Optional[int] = int(score_raw) if score_raw is not None else None
+
+                result[uid] = {
+                    "protein_name":    name,
+                    "reviewed":        reviewed,
+                    "annotation_score": ann_score,
+                }
+
+            logger.debug(
+                "Metadata batch %d/%d done",
+                min(i + _METADATA_BATCH, len(uniprot_ids)),
+                len(uniprot_ids),
+            )
 
         return result
 

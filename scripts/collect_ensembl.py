@@ -67,8 +67,10 @@ def _build_ensg_map(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     have an ensembl_transcript_id set.  ENSG is resolved via the Ensembl API.
     """
     rows = conn.execute(
-        f"SELECT uniprot_id, ensembl_transcript_id FROM {_ISOFORM_TABLE} "
-        f"WHERE is_canonical=1 AND ensembl_transcript_id IS NOT NULL"
+        f"SELECT iso.uniprot_id, iso.ensembl_transcript_id FROM {_ISOFORM_TABLE} iso "
+        f"JOIN proteins p ON p.uniprot_id = iso.uniprot_id "
+        f"WHERE iso.is_canonical=1 AND iso.ensembl_transcript_id IS NOT NULL "
+        f"  AND p.canonical_uniprot_id IS NULL"
     ).fetchall()
     logger.info("Found %d proteins with an Ensembl transcript ID", len(rows))
 
