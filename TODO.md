@@ -57,7 +57,8 @@
   Done in `scripts/analyze_exon_junctions.py`. Q1 (all domain junctions) and Q2
   (AS-exploited junctions) both classify every junction against the 8-motif structure.
   Key finding: alpha helices are the most enriched element in gene structure (1.56x);
-  AS events show near-neutral distribution relative to that baseline (see `results.md`).
+  AS events show near-neutral distribution relative to that baseline. Formal statistical
+  analysis in `Statistical-Analysis.md`.
 
 - [x] **Write motif-disruption mapping script**
   Done — see `scripts/annotate_disrupted_motifs.py` and the high-priority item above.

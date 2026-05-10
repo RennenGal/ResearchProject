@@ -279,7 +279,7 @@ Answers two questions:
 
 Key finding: α-helices are the most enriched element in gene structure (1.49×), robust across all
 domain-length bins. AS events show near-neutral distribution relative to that baseline.
-See `results.md` for full results.
+See `Statistical-Analysis.md` for the full formal results.
 
 ### Domain-length subgroup analysis
 
