@@ -30,7 +30,6 @@ Usage
 -----
     python scripts/analyze_exon_junctions.py
     python scripts/analyze_exon_junctions.py --db db/protein_data.db
-    python scripts/analyze_exon_junctions.py --full-only   # only 8-motif proteins
 """
 
 import argparse
@@ -216,19 +215,17 @@ def _element_lengths(motifs: list[dict], domain_start: int, domain_end: int) -> 
     return lengths
 
 
-def run_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
-    motif_filter = "AND json_array_length(motif_annotations) = 8" if full_only else ""
-    rows = conn.execute(f"""
+def run_analysis(conn: sqlite3.Connection) -> None:
+    rows = conn.execute("""
         SELECT uniprot_id, gene_name, domain_start, domain_end,
                exon_annotations, motif_annotations
         FROM canonical_analysis
         WHERE exon_annotations IS NOT NULL
           AND motif_annotations IS NOT NULL
-          {motif_filter}
         ORDER BY uniprot_id
     """).fetchall()
 
-    subset_label = "8-motif proteins only" if full_only else "all proteins with motif annotations"
+    subset_label = "all proteins with motif annotations"
     print(f"\n{'='*60}")
     print(f"  Exon junction analysis - {subset_label}")
     print(f"{'='*60}")
@@ -323,7 +320,7 @@ def run_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
     print(f"\n  Per-motif detail (beta / loop / alpha junctions):")
     print(f"    {'Region':<16}  {'Count':>6}  {'%':>7}  {'Res':>6}  {'Enrich':>8}")
     print(f"    {'-'*16}  {'-'*6}  {'-'*7}  {'-'*6}  {'-'*8}")
-    n_motifs = 8 if full_only else max(
+    n_motifs = max(
         (int(k.split("_")[1]) for k in label_counts
          if k.startswith(("beta_", "loop_", "alpha_"))),
         default=8
@@ -345,7 +342,7 @@ def run_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
 # Q2: which canonical exon junctions are exploited by AS?
 # ---------------------------------------------------------------------------
 
-def run_as_junction_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
+def run_as_junction_analysis(conn: sqlite3.Connection) -> None:
     """
     Question 2: where do AS events hit the domain structure?
 
@@ -355,11 +352,8 @@ def run_as_junction_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
     sites exploited by AS.  Classify them and compare to Q1 (all domain
     junctions) to find which elements are over-represented.
     """
-    motif_filter_join  = "AND json_array_length(ca.motif_annotations) = 8" if full_only else ""
-    motif_filter_plain = "AND json_array_length(motif_annotations) = 8"    if full_only else ""
-
     # AS-affected isoforms with VSP spans + canonical exon/motif structure
-    as_rows = conn.execute(f"""
+    as_rows = conn.execute("""
         SELECT ai.isoform_id, ai.uniprot_id, ai.vsp_domain_events,
                ca.exon_annotations, ca.motif_annotations,
                ca.domain_start, ca.domain_end
@@ -368,20 +362,18 @@ def run_as_junction_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
         WHERE ai.vsp_domain_events IS NOT NULL
           AND ca.exon_annotations IS NOT NULL
           AND ca.motif_annotations IS NOT NULL
-          {motif_filter_join}
         ORDER BY ai.uniprot_id, ai.isoform_id
     """).fetchall()
 
     # Q1 baseline: all domain junctions across all annotated proteins
-    q1_rows = conn.execute(f"""
+    q1_rows = conn.execute("""
         SELECT domain_start, domain_end, exon_annotations, motif_annotations
         FROM canonical_analysis
         WHERE exon_annotations IS NOT NULL
           AND motif_annotations IS NOT NULL
-          {motif_filter_plain}
     """).fetchall()
 
-    subset_label = "8-motif proteins only" if full_only else "all proteins with motif annotations"
+    subset_label = "all proteins with motif annotations"
     print(f"\n{'='*60}")
     print(f"  Q2: AS-exploited exon junctions - {subset_label}")
     print(f"{'='*60}")
@@ -461,26 +453,24 @@ def run_as_junction_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
 # VSP boundary placement
 # ---------------------------------------------------------------------------
 
-def run_vsp_analysis(conn: sqlite3.Connection, full_only: bool) -> None:
+def run_vsp_analysis(conn: sqlite3.Connection) -> None:
     """
     For each AS-affected isoform, classify where each VSP boundary (start and
     end of the splice event in canonical coordinates) falls within the motif
     structure.  This directly mirrors the paper's analysis of which structural
     elements are disrupted by alternative splicing.
     """
-    motif_filter = "AND json_array_length(ca.motif_annotations) = 8" if full_only else ""
-    rows = conn.execute(f"""
+    rows = conn.execute("""
         SELECT ai.isoform_id, ai.uniprot_id, ai.vsp_domain_events,
                ca.motif_annotations, ca.domain_start, ca.domain_end
         FROM affected_isoforms ai
         JOIN canonical_analysis ca ON ca.uniprot_id = ai.uniprot_id
         WHERE ai.vsp_domain_events IS NOT NULL
           AND ca.motif_annotations IS NOT NULL
-          {motif_filter}
         ORDER BY ai.uniprot_id, ai.isoform_id
     """).fetchall()
 
-    subset_label = "8-motif proteins only" if full_only else "all proteins with motif annotations"
+    subset_label = "all proteins with motif annotations"
     print(f"\n{'='*60}")
     print(f"  VSP boundary placement - {subset_label}")
     print(f"{'='*60}")
@@ -562,17 +552,15 @@ def main() -> None:
         description="Exon junction statistics for TIM barrel canonical isoforms"
     )
     parser.add_argument("--db",        default=None)
-    parser.add_argument("--full-only", action="store_true",
-                        help="Restrict analysis to proteins with full 8-motif annotation")
     args = parser.parse_args()
 
     db_path = args.db or get_config().db_path
     conn = sqlite3.connect(db_path)
 
     print_key_numbers(conn)
-    run_analysis(conn, full_only=args.full_only)
-    run_as_junction_analysis(conn, full_only=args.full_only)
-    run_vsp_analysis(conn, full_only=args.full_only)
+    run_analysis(conn)
+    run_as_junction_analysis(conn)
+    run_vsp_analysis(conn)
 
     conn.close()
 

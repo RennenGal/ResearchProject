@@ -12,7 +12,6 @@ Output figures:
 Usage:
     python scripts/analyze_junction_consistency.py
     python scripts/analyze_junction_consistency.py --B 5000
-    python scripts/analyze_junction_consistency.py --full-only
 """
 
 import argparse
@@ -36,7 +35,7 @@ from protein_data_collector.config import get_config
 # Load proteins  (same filter as analyze_junction_enrichment.py)
 # ---------------------------------------------------------------------------
 
-def load_proteins(conn, full_only=False):
+def load_proteins(conn):
     rows = conn.execute("""
         SELECT uniprot_id, gene_name, domain_start, domain_end,
                exon_annotations, motif_annotations
@@ -49,8 +48,6 @@ def load_proteins(conn, full_only=False):
     proteins = []
     for uid, gene, ds, de, ea, ma in rows:
         motifs = json.loads(ma)
-        if full_only and len(motifs) != 8:
-            continue
         exons     = json.loads(ea)
         junctions = [e["end"] for e in exons[:-1] if ds <= e["end"] < de]
         if not junctions:
@@ -339,7 +336,6 @@ def main():
     parser.add_argument("--db",         default=None)
     parser.add_argument("--B",          type=int, default=2000)
     parser.add_argument("--seed",       type=int, default=42)
-    parser.add_argument("--full-only",  action="store_true")
     parser.add_argument("--out-global", default="figures/consistency_global.png")
     parser.add_argument("--out-phase",  default="figures/consistency_phase.png")
     parser.add_argument("--md",         default="Statistical-Analysis.md")
@@ -347,7 +343,7 @@ def main():
 
     db_path  = args.db or get_config().db_path
     conn     = sqlite3.connect(db_path)
-    proteins = load_proteins(conn, full_only=args.full_only)
+    proteins = load_proteins(conn)
     conn.close()
     N = sum(p["n_p"] for p in proteins)
     print(f"Loaded {len(proteins)} proteins, {N} junctions total.")

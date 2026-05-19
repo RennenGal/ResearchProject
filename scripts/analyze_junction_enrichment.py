@@ -6,18 +6,14 @@ Implements the formal framework from Statistical-Analysis.md:
   - Eligible junction positions E_p = {d_p^s, ..., d_p^e - 1}
   - Junction-count-weighted null expectation pi_t^0
   - Chi-square goodness-of-fit test (analytical approximation)
-  - Within-protein permutation test (preferred, B replicates)
-  - Benjamini–Hochberg FDR correction on per-element p-values
-  - Bar-chart and permutation-distribution figures
+  - Per-element Pearson z-score p-values with Benjamini-Hochberg FDR correction
+  - Bar-chart figure
 
 Output figures:
   figures/enrichment_bars.png        — enrichment ratios (m=3 and m=5)
-  figures/enrichment_permutation.png — permutation null distributions (m=5)
 
 Usage:
     python scripts/analyze_junction_enrichment.py
-    python scripts/analyze_junction_enrichment.py --full-only   # K_p=8 sensitivity check
-    python scripts/analyze_junction_enrichment.py --B 10000
 """
 
 import argparse
@@ -97,26 +93,18 @@ def build_type_array(ds, de, motifs, model, cat_idx):
 # Load proteins
 # ---------------------------------------------------------------------------
 
-def load_proteins(conn, full_only=False):
+def load_proteins(conn):
     rows = conn.execute("""
         SELECT uniprot_id, gene_name, domain_start, domain_end,
                exon_annotations, motif_annotations
-        FROM   canonical_analysis
-        WHERE  exon_annotations  IS NOT NULL
-          AND  motif_annotations IS NOT NULL
-          AND  domain_start      IS NOT NULL
-          AND  domain_end        IS NOT NULL
+        FROM   view_canonical
     """).fetchall()
 
     proteins = []
     for uid, gene, ds, de, ea, ma in rows:
         motifs = json.loads(ma)
-        if full_only and len(motifs) != 8:
-            continue
         exons     = json.loads(ea)
         junctions = [e["end"] for e in exons[:-1] if ds <= e["end"] < de]
-        if not junctions:
-            continue
         proteins.append({"uid": uid, "gene": gene, "ds": ds, "de": de,
                          "motifs": motifs, "n_motifs": len(motifs),
                          "junctions": junctions, "n_p": len(junctions)})
@@ -130,9 +118,9 @@ def load_proteins(conn, full_only=False):
 def run_analysis(proteins, model):
     cats    = CATS3 if model == 3 else CATS5
     cat_idx = {c: i for i, c in enumerate(cats)}
-    N_t     = {c: 0   for c in cats}
-    wq      = {c: 0.0 for c in cats}   # Σ_p n_p * q_pt
-    N       = 0
+    N_t     = {c: 0   for c in cats}   # observed junction count per element type
+    wq      = {c: 0.0 for c in cats}   # Σ_p n_p * q_pt  (weighted null accumulator → π_t^0)
+    N       = 0                         # total domain-internal junctions across all proteins
 
     for p in proteins:
         ds, de = p["ds"], p["de"]
@@ -170,48 +158,28 @@ def chi_square_test(result):
 
 
 # ---------------------------------------------------------------------------
-# Within-protein permutation test
+# Per-element chi-square p-values (Pearson z-score)
 # ---------------------------------------------------------------------------
 
-def permutation_test(proteins, model, result, B=10000, seed=42):
-    cats    = result["cats"]
-    cat_idx = result["cat_idx"]
-    n_cats  = len(cats)
-    N       = result["N"]
-    pi_t    = result["pi_t"]
-    rng     = np.random.default_rng(seed)
-
-    # Pre-build type arrays once (reused across all B replicates)
-    type_arrays = [
-        (p["n_p"], build_type_array(p["ds"], p["de"], p["motifs"], model, cat_idx))
-        for p in proteins
-    ]
-
-    rho_b = np.zeros((B, n_cats))
-    for b in range(B):
-        counts_b = np.zeros(n_cats, dtype=np.int64)
-        for n_p, arr in type_arrays:
-            drawn     = rng.choice(len(arr), size=n_p, replace=False)
-            counts_b += np.bincount(arr[drawn].astype(int), minlength=n_cats)
-        f_b = counts_b / N
-        for i, c in enumerate(cats):
-            rho_b[b, i] = f_b[i] / pi_t[c] if pi_t[c] > 0 else 0.0
-
-    return rho_b
-
-
-def compute_pvalues(result, rho_b):
-    """Two-sided p-values using |rho - 1| distance, with +1 finite-sample correction."""
-    cats  = result["cats"]
-    B     = len(rho_b)
-    return {
-        c: (1 + int(np.sum(np.abs(rho_b[:, i] - 1) >= abs(result["rho_t"][c] - 1)))) / (B + 1)
-        for i, c in enumerate(cats)
-    }
+def chi_square_pvalues(result):
+    cats = result["cats"]
+    N    = result["N"]
+    pvals_raw = {}
+    for c in cats:
+        O_t = result["N_t"][c]
+        E_t = N * result["pi_t"][c]
+        if E_t > 0:
+            z_t = (O_t - E_t) / np.sqrt(E_t)
+            p   = 2 * stats.norm.sf(abs(z_t))
+        else:
+            p = 1.0
+        pvals_raw[c] = float(p)
+    pvals_bh = bh_correction(pvals_raw)
+    return pvals_raw, pvals_bh
 
 
 def bh_correction(pvals_dict):
-    """Benjamini–Hochberg FDR correction."""
+    """Benjamini-Hochberg FDR correction."""
     cats  = list(pvals_dict.keys())
     pvals = np.array([pvals_dict[c] for c in cats])
     n     = len(pvals)
@@ -236,7 +204,7 @@ def sig_stars(p):
     return "ns"
 
 
-def print_results(label, n_prot, result, chi2, chi2_p, dof, pvals, pvals_bh, rho_b):
+def print_results(label, n_prot, result, chi2, chi2_p, dof, pvals, pvals_bh):
     cats   = result["cats"]
     labels = ALABELS3 if len(cats) == 3 else ALABELS5
     N      = result["N"]
@@ -246,16 +214,13 @@ def print_results(label, n_prot, result, chi2, chi2_p, dof, pvals, pvals_bh, rho
           f"|  Mean n_p: {N/n_prot:.1f}")
     print(f"{'='*78}")
     print(f"  {'Category':<16}  {'N_t':>5}  {'f_t':>7}  {'pi_t0':>7}  "
-          f"{'rho_t':>6}  {'95% CI permutation':>20}  {'p_raw':>7}  {'p_BH':>7}  Sig")
+          f"{'rho_t':>6}  {'p_raw':>7}  {'p_BH':>7}  Sig")
     print("  " + "-"*16 + ("  " + "-"*5) + ("  " + "-"*7)*3
-          + "  " + "-"*20 + "  " + "-"*7 + "  " + "-"*7 + "  ---")
+          + "  " + "-"*7 + "  " + "-"*7 + "  ---")
     for i, c in enumerate(cats):
-        lo = np.percentile(rho_b[:, i], 2.5)
-        hi = np.percentile(rho_b[:, i], 97.5)
         print(f"  {labels[c]:<16}  {result['N_t'][c]:>5}  "
               f"{result['f_t'][c]:>7.4f}  {result['pi_t'][c]:>7.4f}  "
               f"{result['rho_t'][c]:>6.3f}  "
-              f"  [{lo:.3f}, {hi:.3f}]        "
               f"{pvals[c]:>7.4f}  {pvals_bh[c]:>7.4f}  {sig_stars(pvals_bh[c])}")
     print(f"\n  Chi-square (approx): chi2({dof}) = {chi2:.2f}, p = {chi2_p:.4g}")
     print(f"{'='*78}")
@@ -265,98 +230,46 @@ def print_results(label, n_prot, result, chi2, chi2_p, dof, pvals, pvals_bh, rho
 # Figures
 # ---------------------------------------------------------------------------
 
-def plot_enrichment_bars(r3, r5, rb3, rb5, p3_bh, p5_bh,
-                         out="figures/enrichment_bars.png"):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+def plot_enrichment_bars(result, pvals_bh, out="figures/enrichment_bars.png"):
+    cats = result["cats"]
+    N    = result["N"]
+    x    = np.arange(len(cats))
+    rhos = [result["rho_t"][c] for c in cats]
+    errs = [1.96 * np.sqrt(result["rho_t"][c] / (N * result["pi_t"][c]))
+            if result["pi_t"][c] > 0 else 0.0
+            for c in cats]
 
-    for ax, result, rho_b, pvals_bh, cols, labels, title in [
-        (axes[0], r3, rb3, p3_bh, COLS3, LABELS3, "Simplified model (m = 3)"),
-        (axes[1], r5, rb5, p5_bh, COLS5, LABELS5, "Full model (m = 5)"),
-    ]:
-        cats    = result["cats"]
-        x       = np.arange(len(cats))
-        rhos    = [result["rho_t"][c] for c in cats]
-        null_lo = [np.percentile(rho_b[:, i], 2.5)  for i in range(len(cats))]
-        null_hi = [np.percentile(rho_b[:, i], 97.5) for i in range(len(cats))]
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    ax.bar(x, rhos, color=[COLS5[c] for c in cats],
+           alpha=0.85, width=0.6, zorder=3)
+    ax.axhline(1.0, color="black", linewidth=0.9, linestyle="--", zorder=2)
 
-        ax.bar(x, rhos, color=[cols[c] for c in cats],
-               alpha=0.85, width=0.6, zorder=3)
-        ax.axhline(1.0, color="black", linewidth=0.9, linestyle="--", zorder=2)
-
-        # Null 95% CI as grey error bars centred at rho=1
-        ax.errorbar(x, [1.0] * len(cats),
-                    yerr=[[1.0 - lo for lo in null_lo],
-                          [hi - 1.0 for hi in null_hi]],
-                    fmt="none", color="#888888", capsize=5,
-                    linewidth=1.2, zorder=4, label="Null 95% CI")
-
-        for i, c in enumerate(cats):
-            star = sig_stars(pvals_bh[c])
-            if star != "ns":
-                ax.text(i, max(rhos[i], null_hi[i]) + 0.03, star,
-                        ha="center", va="bottom", fontsize=10, fontweight="bold")
-
-        ax.set_xticks(x)
-        ax.set_xticklabels([labels[c] for c in cats],
-                           rotation=20, ha="right", fontsize=9)
-        ax.set_ylabel("Enrichment ratio $\\rho_t$", fontsize=10)
-        ax.set_title(title, fontsize=11, fontweight="bold")
-        ax.set_ylim(0, max(max(rhos) + 0.25, max(null_hi) + 0.15, 1.85))
-        ax.yaxis.grid(True, linestyle=":", alpha=0.4, zorder=0)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-
-    fig.suptitle(
-        "Exon junction enrichment in TIM-barrel structural elements\n"
-        "(error bars = 95% permutation null interval; *, **, *** = BH-adjusted p < 0.05/0.01/0.001)",
-        fontsize=10, y=1.02,
-    )
-    fig.tight_layout()
-    Path(out).parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=150, bbox_inches="tight")
-    print(f"Saved {out}")
-
-
-def plot_permutation_distributions(result, rho_b, pvals_raw, pvals_bh,
-                                   out="figures/enrichment_permutation.png"):
-    cats   = result["cats"]
-    labels = LABELS3 if len(cats) == 3 else LABELS5
-    cols   = COLS3   if len(cats) == 3 else COLS5
-    ncols  = 3
-    nrows  = (len(cats) + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
-    axes = np.array(axes).flatten()
+    # 95% Poisson CI error bars centred at rho_t
+    ax.errorbar(x, rhos, yerr=errs,
+                fmt="none", color="#888888", capsize=5,
+                linewidth=1.2, zorder=4, label="95% CI (Poisson)")
 
     for i, c in enumerate(cats):
-        ax  = axes[i]
-        obs = result["rho_t"][c]
-        ax.hist(rho_b[:, i], bins=60, color=cols[c], alpha=0.65,
-                edgecolor="white", linewidth=0.3, density=True, zorder=2)
-        ax.axvline(obs, color="black", linewidth=2.0, zorder=4)
-        ax.axvline(1.0, color="gray",  linewidth=0.8, linestyle="--", zorder=3)
-        tx = 0.03 if obs > 1.0 else 0.97
-        ha = "left" if obs > 1.0 else "right"
-        ax.text(tx, 0.95,
-                f"$\\rho$ = {obs:.3f}\n"
-                f"$p$ = {pvals_raw[c]:.4f}\n"
-                f"$p_{{BH}}$ = {pvals_bh[c]:.4f}   {sig_stars(pvals_bh[c])}",
-                transform=ax.transAxes, ha=ha, va="top", fontsize=8,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-        ax.set_title(labels[c], fontsize=10, fontweight="bold")
-        ax.set_xlabel("$\\rho_t$ (permuted)", fontsize=8)
-        ax.set_ylabel("Density", fontsize=8)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
+        star = sig_stars(pvals_bh[c])
+        if star != "ns":
+            ax.text(i, rhos[i] + errs[i] + 0.03, star,
+                    ha="center", va="bottom", fontsize=10, fontweight="bold")
 
-    for j in range(i + 1, len(axes)):
-        axes[j].set_visible(False)
-
-    fig.suptitle(
-        f"Permutation null distributions  (B = {len(rho_b):,} replicates)\n"
-        "Vertical line = observed $\\rho_t$",
-        fontsize=11, y=1.01,
+    ax.set_xticks(x)
+    ax.set_xticklabels([LABELS5[c] for c in cats], rotation=20, ha="right", fontsize=9)
+    ax.set_ylabel("Enrichment ratio $\\rho_t$", fontsize=10)
+    ax.set_title(
+        "Exon junction enrichment in TIM-barrel structural elements\n"
+        "(error bars = 95% Poisson CI; *, **, *** = BH-adjusted p < 0.05/0.01/0.001)",
+        fontsize=9,
     )
+    ax.set_ylim(0, max(max(r + e for r, e in zip(rhos, errs)) + 0.25, 1.85))
+    ax.yaxis.grid(True, linestyle=":", alpha=0.4, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
     fig.tight_layout()
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Saved {out}")
 
@@ -365,20 +278,22 @@ def plot_permutation_distributions(result, rho_b, pvals_raw, pvals_bh,
 # Update Statistical-Analysis.md §5
 # ---------------------------------------------------------------------------
 
-def _md_table(result, rho_b, pvals_raw, pvals_bh):
+def _md_table(result, pvals_raw, pvals_bh):
     cats   = result["cats"]
+    N      = result["N"]
     labels = LABELS3 if len(cats) == 3 else LABELS5
-    rows   = ["| Category | $N_t$ | $f_t$ | $\\pi_t^0$ | $\\rho_t$ | Null 95% interval | $p$ (raw) | $p$ (BH) |",
+    rows   = ["| Category | $N_t$ | $f_t$ | $\\pi_t^0$ | $\\rho_t$ | $\\chi^2$ | $p$ (raw) | $p$ (BH) |",
               "|---|---|---|---|---|---|---|---|"]
     for i, c in enumerate(cats):
-        lo   = np.percentile(rho_b[:, i], 2.5)
-        hi   = np.percentile(rho_b[:, i], 97.5)
+        O_t  = result["N_t"][c]
+        E_t  = N * result["pi_t"][c]
+        chi2 = (O_t - E_t) ** 2 / E_t if E_t > 0 else 0.0
         sig  = sig_stars(pvals_bh[c])
         rows.append(
             f"| {labels[c]} | {result['N_t'][c]} "
             f"| {result['f_t'][c]:.4f} | {result['pi_t'][c]:.4f} "
             f"| **{result['rho_t'][c]:.3f}** {sig} "
-            f"| [{lo:.3f}, {hi:.3f}] "
+            f"| {chi2:.2f} "
             f"| {pvals_raw[c]:.4f} | {pvals_bh[c]:.4f} |"
         )
     return "\n".join(rows)
@@ -405,52 +320,30 @@ def update_results_section(md_path, content):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--db",        default=None)
-    parser.add_argument("--B",         type=int, default=10000,
-                        help="Permutation replicates (default 10 000)")
-    parser.add_argument("--seed",      type=int, default=42)
-    parser.add_argument("--full-only", action="store_true",
-                        help="Restrict to proteins with K_p = 8 (sensitivity check)")
     parser.add_argument("--out-bars",  default="figures/enrichment_bars.png")
-    parser.add_argument("--out-perm",  default="figures/enrichment_permutation.png")
     parser.add_argument("--md",        default="Statistical-Analysis.md")
     args = parser.parse_args()
 
     db_path  = args.db or get_config().db_path
     conn     = sqlite3.connect(db_path)
-    proteins = load_proteins(conn, full_only=args.full_only)
+    proteins = load_proteins(conn)
     conn.close()
-    print(f"Loaded {len(proteins)} proteins "
-          f"({'K_p = 8 only' if args.full_only else 'full + partial'}).")
+    print(f"Loaded {len(proteins)} proteins.")
 
-    # ── Simplified model (m = 3) ──────────────────────────────────────────
-    print("\nSimplified model (m = 3) …")
-    r3          = run_analysis(proteins, model=3)
-    chi2_3, p3, dof3 = chi_square_test(r3)
-    print(f"  Permutation test (B = {args.B}) …")
-    rb3         = permutation_test(proteins, 3, r3, B=args.B, seed=args.seed)
-    pv3         = compute_pvalues(r3, rb3)
-    pv3_bh      = bh_correction(pv3)
-    print_results("Simplified model (m = 3)", len(proteins),
-                  r3, chi2_3, p3, dof3, pv3, pv3_bh, rb3)
-
-    # ── Full model (m = 5) ────────────────────────────────────────────────
-    print("\nFull model (m = 5) …")
-    r5          = run_analysis(proteins, model=5)
+    # -- Full model (m = 5) ------------------------------------------------
+    print("\nFull model (m = 5) ...")
+    r5               = run_analysis(proteins, model=5)
     chi2_5, p5, dof5 = chi_square_test(r5)
-    print(f"  Permutation test (B = {args.B}) …")
-    rb5         = permutation_test(proteins, 5, r5, B=args.B, seed=args.seed)
-    pv5         = compute_pvalues(r5, rb5)
-    pv5_bh      = bh_correction(pv5)
+    pv5, pv5_bh      = chi_square_pvalues(r5)
     print_results("Full model (m = 5)", len(proteins),
-                  r5, chi2_5, p5, dof5, pv5, pv5_bh, rb5)
+                  r5, chi2_5, p5, dof5, pv5, pv5_bh)
 
-    # ── Figures ───────────────────────────────────────────────────────────
-    plot_enrichment_bars(r3, r5, rb3, rb5, pv3_bh, pv5_bh, out=args.out_bars)
-    plot_permutation_distributions(r5, rb5, pv5, pv5_bh, out=args.out_perm)
+    # -- Figures -----------------------------------------------------------
+    plot_enrichment_bars(r5, pv5_bh, out=args.out_bars)
 
-    # ── Update Statistical-Analysis.md §5 ─────────────────────────────────
-    N       = r3["N"]
-    n_prot  = len(proteins)
+    # -- Update Statistical-Analysis.md §5 ---------------------------------
+    N      = r5["N"]
+    n_prot = len(proteins)
     content = f"""\
 ### Dataset
 
@@ -462,23 +355,16 @@ def main():
 | Proteins with full annotation ($K_p = 8$) | {sum(1 for p in proteins if p['n_motifs'] == 8)} |
 | Proteins with partial annotation ($K_p < 8$) | {sum(1 for p in proteins if p['n_motifs'] < 8)} |
 
-### Simplified model ($m = 3$): β-strand, α-helix, other
-
-Chi-square global test (approximation): χ²({dof3}) = {chi2_3:.2f}, p = {p3:.4g}
-
-{_md_table(r3, rb3, pv3, pv3_bh)}
-
 ### Full model ($m = 5$): β-strand, α-helix, inter-motif linker, loop (β→α), flanking
 
 Chi-square global test (approximation): χ²({dof5}) = {chi2_5:.2f}, p = {p5:.4g}
 
-{_md_table(r5, rb5, pv5, pv5_bh)}
+{_md_table(r5, pv5, pv5_bh)}
 
-Significance codes (BH-adjusted permutation p-values):
+Significance codes (BH-adjusted chi-square p-values):
 \\* p < 0.05 \\*\\* p < 0.01 \\*\\*\\* p < 0.001
 
-Figures: `figures/enrichment_bars.png` (enrichment ratios with 95% permutation CI),
-`figures/enrichment_permutation.png` (permutation null distributions, full model).
+Figures: `figures/enrichment_bars.png` (enrichment ratios with 95% Poisson CI).
 """
     md_path = Path(args.md)
     if md_path.exists():
