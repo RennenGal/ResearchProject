@@ -30,6 +30,7 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from protein_data_collector.config import get_config
+from junction_utils import load_canonical_junctions
 
 # ---------------------------------------------------------------------------
 # Category definitions
@@ -94,17 +95,19 @@ def build_type_array(ds, de, motifs, model, cat_idx):
 # ---------------------------------------------------------------------------
 
 def load_proteins(conn):
+    enst_jcts = load_canonical_junctions(conn)
     rows = conn.execute("""
         SELECT uniprot_id, gene_name, domain_start, domain_end,
-               exon_annotations, motif_annotations
+               motif_annotations
         FROM   view_canonical
     """).fetchall()
 
     proteins = []
-    for uid, gene, ds, de, ea, ma in rows:
-        motifs = json.loads(ma)
-        exons     = json.loads(ea)
-        junctions = [e["end"] for e in exons[:-1] if ds <= e["end"] < de]
+    for uid, gene, ds, de, ma in rows:
+        if uid not in enst_jcts:
+            continue                    # no Ensembl transcript — excluded
+        motifs    = json.loads(ma)
+        junctions = enst_jcts[uid]
         proteins.append({"uid": uid, "gene": gene, "ds": ds, "de": de,
                          "motifs": motifs, "n_motifs": len(motifs),
                          "junctions": junctions, "n_p": len(junctions)})
@@ -230,29 +233,39 @@ def print_results(label, n_prot, result, chi2, chi2_p, dof, pvals, pvals_bh):
 # Figures
 # ---------------------------------------------------------------------------
 
-def plot_enrichment_bars(result, pvals_bh, out="figures/enrichment_bars.png"):
+def plot_enrichment_bars(result, pvals_raw, pvals_bh, out="figures/enrichment_bars.png"):
     cats = result["cats"]
     N    = result["N"]
     x    = np.arange(len(cats))
     rhos = [result["rho_t"][c] for c in cats]
-    errs = [1.96 * np.sqrt(result["rho_t"][c] / (N * result["pi_t"][c]))
-            if result["pi_t"][c] > 0 else 0.0
-            for c in cats]
+
+    # BH-consistent CIs: z_r = Phi^{-1}(1 - alpha*r/(2*K)) per BH rank r.
+    # Half-width = z_r / sqrt(E_t), consistent with the test statistic
+    # (O-E)/sqrt(E); lower bar clipped so CI doesn't go below 0.
+    alpha = 0.05
+    K = len(cats)
+    sorted_cats = sorted(cats, key=lambda c: pvals_raw[c])
+    ranks = {c: i + 1 for i, c in enumerate(sorted_cats)}
+    z_bh = {c: stats.norm.ppf(1 - alpha * ranks[c] / (2 * K)) for c in cats}
+    hws = [z_bh[c] / np.sqrt(N * result["pi_t"][c])
+           if result["pi_t"][c] > 0 else 0.0
+           for c in cats]
+    lo_errs = [min(rho, hw) for rho, hw in zip(rhos, hws)]
+    hi_errs = hws
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.bar(x, rhos, color=[COLS5[c] for c in cats],
            alpha=0.85, width=0.6, zorder=3)
     ax.axhline(1.0, color="black", linewidth=0.9, linestyle="--", zorder=2)
 
-    # 95% Poisson CI error bars centred at rho_t
-    ax.errorbar(x, rhos, yerr=errs,
-                fmt="none", color="#888888", capsize=5,
-                linewidth=1.2, zorder=4, label="95% CI (Poisson)")
+    ax.errorbar(x, rhos, yerr=[lo_errs, hi_errs],
+                fmt="none", color="#333333", capsize=5,
+                linewidth=1.2, zorder=4)
 
     for i, c in enumerate(cats):
         star = sig_stars(pvals_bh[c])
         if star != "ns":
-            ax.text(i, rhos[i] + errs[i] + 0.03, star,
+            ax.text(i, rhos[i] + hi_errs[i] + 0.03, star,
                     ha="center", va="bottom", fontsize=10, fontweight="bold")
 
     ax.set_xticks(x)
@@ -260,10 +273,10 @@ def plot_enrichment_bars(result, pvals_bh, out="figures/enrichment_bars.png"):
     ax.set_ylabel("Enrichment ratio $\\rho_t$", fontsize=10)
     ax.set_title(
         "Exon junction enrichment in TIM-barrel structural elements\n"
-        "(error bars = 95% Poisson CI; *, **, *** = BH-adjusted p < 0.05/0.01/0.001)",
+        "(error bars = BH-adjusted CI; *, **, *** = BH-adjusted p < 0.05/0.01/0.001)",
         fontsize=9,
     )
-    ax.set_ylim(0, max(max(r + e for r, e in zip(rhos, errs)) + 0.25, 1.85))
+    ax.set_ylim(0, max(max(r + e for r, e in zip(rhos, hi_errs)) + 0.25, 1.85))
     ax.yaxis.grid(True, linestyle=":", alpha=0.4, zorder=0)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -339,7 +352,7 @@ def main():
                   r5, chi2_5, p5, dof5, pv5, pv5_bh)
 
     # -- Figures -----------------------------------------------------------
-    plot_enrichment_bars(r5, pv5_bh, out=args.out_bars)
+    plot_enrichment_bars(r5, pv5, pv5_bh, out=args.out_bars)
 
     # -- Update Statistical-Analysis.md §5 ---------------------------------
     N      = r5["N"]

@@ -399,50 +399,50 @@ where $q_{p,(t,k)} = |E_{p,(t,k)}| / L_p$ is the fraction of domain positions in
 
 #### 8A Results
 
-Dataset: 229 proteins, 1120 domain-internal junctions.
+Dataset: 216 proteins, 1108 domain-internal junctions.
 
 | Position | $N_{(t,k)}$ | $f_{(t,k)}$ | $\pi_{(t,k)}^0$ | $\rho_{(t,k)}$ | $\chi^2$ | Raw $p$ | BH $p$ | Sig |
 |---|---|---|---|---|---|---|---|---|
-| β-strand 1 (n=156) | 17 | 0.0152 | 0.0152 | 0.997 | 0.000 | 0.9887 | 0.9887 | ns |
-| β-strand 2 (n=107) | 19 | 0.0170 | 0.0127 | 1.336 | 1.610 | 0.2046 | 0.4844 | ns |
-| β-strand 3 (n=91) | 16 | 0.0143 | 0.0104 | 1.378 | 1.657 | 0.1980 | 0.4844 | ns |
-| β-strand 4 (n=93) | 10 | 0.0089 | 0.0094 | 0.946 | 0.031 | 0.8597 | 0.9515 | ns |
-| β-strand 5 (n=91) | 15 | 0.0134 | 0.0104 | 1.286 | 0.956 | 0.3281 | 0.6195 | ns |
-| β-strand 6 (n=85) | 14 | 0.0125 | 0.0086 | 1.452 | 1.967 | 0.1607 | 0.4844 | ns |
-| β-strand 7 (n=93) | 9 | 0.0080 | 0.0095 | 0.850 | 0.239 | 0.6250 | 0.7950 | ns |
-| β-strand 8 (n=87) | 8 | 0.0071 | 0.0084 | 0.848 | 0.217 | 0.6411 | 0.7950 | ns |
+| β-strand 1 (n=151) | 18 | 0.0162 | 0.0154 | 1.052 | 0.047 | 0.8286 | 0.9392 | ns |
+| β-strand 2 (n=105) | 22 | 0.0199 | 0.0126 | 1.575 | 4.622 | 0.0316 | 0.3721 | ns |
+| β-strand 3 (n=89) | 16 | 0.0144 | 0.0104 | 1.384 | 1.707 | 0.1913 | 0.4368 | ns |
+| β-strand 4 (n=91) | 12 | 0.0108 | 0.0095 | 1.137 | 0.197 | 0.6568 | 0.8852 | ns |
+| β-strand 5 (n=89) | 16 | 0.0144 | 0.0104 | 1.383 | 1.696 | 0.1927 | 0.4368 | ns |
+| β-strand 6 (n=82) | 12 | 0.0108 | 0.0085 | 1.268 | 0.679 | 0.4099 | 0.6674 | ns |
+| β-strand 7 (n=90) | 10 | 0.0090 | 0.0094 | 0.964 | 0.013 | 0.9089 | 0.9392 | ns |
+| β-strand 8 (n=85) | 7 | 0.0063 | 0.0084 | 0.753 | 0.565 | 0.4522 | 0.6676 | ns |
 |---|---|---|---|---|---|---|---|---|
-| Loop (β→α) 1 (n=152) | 49 | 0.0437 | 0.0384 | 1.140 | 0.840 | 0.3593 | 0.6195 | ns |
-| Loop (β→α) 2 (n=154) | 26 | 0.0232 | 0.0326 | 0.713 | 3.009 | 0.0828 | 0.4844 | ns |
-| Loop (β→α) 3 (n=153) | 40 | 0.0357 | 0.0325 | 1.099 | 0.358 | 0.5496 | 0.7744 | ns |
-| Loop (β→α) 4 (n=152) | 41 | 0.0366 | 0.0447 | 0.818 | 1.653 | 0.1985 | 0.4844 | ns |
-| Loop (β→α) 5 (n=155) | 31 | 0.0277 | 0.0361 | 0.766 | 2.208 | 0.1373 | 0.4844 | ns |
-| Loop (β→α) 6 (n=151) | 35 | 0.0312 | 0.0360 | 0.868 | 0.706 | 0.4009 | 0.6214 | ns |
-| Loop (β→α) 7 (n=156) | 37 | 0.0330 | 0.0365 | 0.905 | 0.370 | 0.5431 | 0.7744 | ns |
-| Loop (β→α) 8 (n=146) | 31 | 0.0277 | 0.0304 | 0.910 | 0.279 | 0.5973 | 0.7950 | ns |
+| Loop (β→α) 1 (n=147) | 45 | 0.0406 | 0.0379 | 1.071 | 0.210 | 0.6469 | 0.8852 | ns |
+| Loop (β→α) 2 (n=149) | 26 | 0.0235 | 0.0335 | 0.701 | 3.322 | 0.0684 | 0.3721 | ns |
+| Loop (β→α) 3 (n=148) | 41 | 0.0370 | 0.0327 | 1.131 | 0.621 | 0.4306 | 0.6674 | ns |
+| Loop (β→α) 4 (n=147) | 40 | 0.0361 | 0.0444 | 0.813 | 1.725 | 0.1891 | 0.4368 | ns |
+| Loop (β→α) 5 (n=150) | 29 | 0.0262 | 0.0365 | 0.717 | 3.236 | 0.0720 | 0.3721 | ns |
+| Loop (β→α) 6 (n=146) | 33 | 0.0298 | 0.0364 | 0.818 | 1.338 | 0.2474 | 0.4793 | ns |
+| Loop (β→α) 7 (n=151) | 40 | 0.0361 | 0.0362 | 0.998 | 0.000 | 0.9876 | 0.9876 | ns |
+| Loop (β→α) 8 (n=141) | 28 | 0.0253 | 0.0304 | 0.831 | 0.965 | 0.3259 | 0.5942 | ns |
 |---|---|---|---|---|---|---|---|---|
-| α-helix 1 (n=156) | 38 | 0.0339 | 0.0343 | 0.989 | 0.005 | 0.9435 | 0.9750 | ns |
-| α-helix 2 (n=156) | 45 | 0.0402 | 0.0351 | 1.146 | 0.839 | 0.3597 | 0.6195 | ns |
-| α-helix 3 (n=156) | 32 | 0.0286 | 0.0400 | 0.715 | 3.635 | 0.0566 | 0.4844 | ns |
-| α-helix 4 (n=156) | 60 | 0.0536 | 0.0351 | 1.525 | 10.850 | 0.0010 | 0.0306 | * |
-| α-helix 5 (n=156) | 46 | 0.0411 | 0.0349 | 1.176 | 1.217 | 0.2700 | 0.5579 | ns |
-| α-helix 6 (n=156) | 38 | 0.0339 | 0.0347 | 0.978 | 0.019 | 0.8901 | 0.9515 | ns |
-| α-helix 7 (n=156) | 49 | 0.0437 | 0.0333 | 1.315 | 3.690 | 0.0547 | 0.4844 | ns |
-| α-helix 8 (n=156) | 48 | 0.0429 | 0.0359 | 1.194 | 1.513 | 0.2187 | 0.4844 | ns |
+| α-helix 1 (n=151) | 39 | 0.0352 | 0.0344 | 1.023 | 0.021 | 0.8857 | 0.9392 | ns |
+| α-helix 2 (n=151) | 41 | 0.0370 | 0.0352 | 1.050 | 0.098 | 0.7543 | 0.8994 | ns |
+| α-helix 3 (n=151) | 33 | 0.0298 | 0.0397 | 0.750 | 2.749 | 0.0973 | 0.4310 | ns |
+| α-helix 4 (n=151) | 60 | 0.0542 | 0.0353 | 1.535 | 11.205 | 0.0008 | 0.0253 | * |
+| α-helix 5 (n=151) | 46 | 0.0415 | 0.0349 | 1.190 | 1.399 | 0.2370 | 0.4793 | ns |
+| α-helix 6 (n=151) | 36 | 0.0325 | 0.0346 | 0.939 | 0.142 | 0.7064 | 0.8945 | ns |
+| α-helix 7 (n=151) | 49 | 0.0442 | 0.0335 | 1.320 | 3.796 | 0.0514 | 0.3721 | ns |
+| α-helix 8 (n=151) | 48 | 0.0433 | 0.0359 | 1.207 | 1.708 | 0.1913 | 0.4368 | ns |
 |---|---|---|---|---|---|---|---|---|
-| Inter-motif 1 (n=106) | 22 | 0.0196 | 0.0258 | 0.762 | 1.641 | 0.2002 | 0.4844 | ns |
-| Inter-motif 2 (n=90) | 22 | 0.0196 | 0.0143 | 1.372 | 2.223 | 0.1360 | 0.4844 | ns |
-| Inter-motif 3 (n=90) | 21 | 0.0187 | 0.0172 | 1.089 | 0.152 | 0.6969 | 0.8248 | ns |
-| Inter-motif 4 (n=90) | 22 | 0.0196 | 0.0182 | 1.080 | 0.130 | 0.7184 | 0.8248 | ns |
-| Inter-motif 5 (n=85) | 21 | 0.0187 | 0.0129 | 1.453 | 2.963 | 0.0852 | 0.4844 | ns |
-| Inter-motif 6 (n=93) | 11 | 0.0098 | 0.0146 | 0.673 | 1.750 | 0.1859 | 0.4844 | ns |
-| Inter-motif 7 (n=85) | 19 | 0.0170 | 0.0139 | 1.222 | 0.764 | 0.3819 | 0.6214 | ns |
+| Inter-motif 1 (n=104) | 21 | 0.0190 | 0.0262 | 0.722 | 2.241 | 0.1344 | 0.4368 | ns |
+| Inter-motif 2 (n=88) | 22 | 0.0199 | 0.0144 | 1.377 | 2.275 | 0.1315 | 0.4368 | ns |
+| Inter-motif 3 (n=88) | 20 | 0.0181 | 0.0174 | 1.040 | 0.031 | 0.8611 | 0.9392 | ns |
+| Inter-motif 4 (n=88) | 22 | 0.0199 | 0.0184 | 1.079 | 0.127 | 0.7214 | 0.8945 | ns |
+| Inter-motif 5 (n=82) | 22 | 0.0199 | 0.0129 | 1.545 | 4.227 | 0.0398 | 0.3721 | ns |
+| Inter-motif 6 (n=90) | 13 | 0.0117 | 0.0146 | 0.803 | 0.628 | 0.4282 | 0.6674 | ns |
+| Inter-motif 7 (n=83) | 20 | 0.0181 | 0.0135 | 1.333 | 1.663 | 0.1972 | 0.4368 | ns |
 |---|---|---|---|---|---|---|---|---|
 
 Significance codes (BH-adjusted chi-square p-values):
 \* p < 0.05  \*\* p < 0.01  \*\*\* p < 0.001
 
-Significant positions (BH $p < 0.05$): α-helix 4 ($\rho=1.525$, BH $p=0.0306$).
+Significant positions (BH $p < 0.05$): α-helix 4 ($\rho=1.535$, BH $p=0.0253$).
 
 ![Motif-specific element enrichment heatmap](figures/motif_enrichment_heatmap.png)
 ---
@@ -494,9 +494,9 @@ preferentially hit. That question would require a separate motif-index analysis.
 
 | Element | $n$ | KS $D$ | KS $p$ (analytical) | Perm $p$ | Perm $p$ (BH) |
 |---|---|---|---|---|---|
-| α-helix | 459 | 0.0959 | 0.0004017 | 0.2634 | 0.3951 |
-| β-strand | 145 | 0.1655 | 0.0006115 | 0.8531 | 0.8531 |
-| Loop (β→α) | 365 | 0.2656 | 3.267e-23 | 0.0005 | 0.0015 |
+| α-helix | 450 | 0.0956 | 0.0004999 | 0.2409 | 0.3613 |
+| β-strand | 147 | 0.1769 | 0.000171 | 0.6737 | 0.6737 |
+| Loop (β→α) | 349 | 0.2652 | 3.763e-22 | 0.0005 | 0.0015 |
 
 Significance codes apply to BH-adjusted permutation p-values.
 
@@ -669,15 +669,15 @@ Per-element p-values are adjusted using Benjamini–Hochberg FDR correction.
 
 #### 9A Results
 
-Dataset: $|\mathcal{A}|$ = 131 isoforms across 74 canonical proteins; $N^{AS}$ = 218 AS-affected junction instances.
+Dataset: $|\mathcal{A}|$ = 53 isoforms across 36 canonical proteins; $N^{AS}$ = 147 AS-affected junction instances.
 
 | Element | $N_t^{AS}$ | $f_t^{AS}$ | $f_t$ | $\rho_t^{AS}$ | $\chi^2$ $z$ | Raw $p$ | BH $p$ | Sig |
 |---|---|---|---|---|---|---|---|---|
-| β-strand | 31 | 0.142 | 0.100 | 1.425 | 1.982 | 0.0475 | 0.1831 | ns |
-| α-helix | 54 | 0.248 | 0.316 | 0.784 | -1.791 | 0.0732 | 0.1831 | ns |
-| Inter-motif | 24 | 0.110 | 0.138 | 0.800 | -1.097 | 0.2728 | 0.3410 | ns |
-| Loop (β→α) | 57 | 0.261 | 0.252 | 1.038 | 0.282 | 0.7782 | 0.7782 | ns |
-| Flanking | 52 | 0.239 | 0.195 | 1.225 | 1.464 | 0.1432 | 0.2386 | ns |
+| β-strand | 29 | 0.197 | 0.104 | 1.894 | 3.497 | 0.0005 | 0.0024 | ** |
+| α-helix | 40 | 0.272 | 0.319 | 0.853 | -1.005 | 0.3149 | 0.4101 | ns |
+| Inter-motif | 16 | 0.109 | 0.139 | 0.784 | -0.978 | 0.3281 | 0.4101 | ns |
+| Loop (β→α) | 41 | 0.279 | 0.248 | 1.124 | 0.751 | 0.4525 | 0.4525 | ns |
+| Flanking | 21 | 0.143 | 0.190 | 0.752 | -1.310 | 0.1903 | 0.4101 | ns |
 
 Pearson $\chi^2$ $z$-scores are two-sided; BH correction across all 5 element types; error bars in figure show 95% Poisson CI.
 
@@ -716,14 +716,14 @@ normalised positions of the $b$-th permutation replicate, with $F_N^{const}$ kep
 
 #### 9B Results
 
-$N^{AS}$ = 218 normalised positions from 131 isoforms; canonical baseline $N$ = 1453.
+$N^{AS}$ = 147 normalised positions from 53 isoforms; canonical baseline $N$ = 1411.
 
 | Statistic | Value |
 |---|---|
-| KS statistic $D$ | 0.1013 |
-| Analytical $p$ | 0.0375 |
+| KS statistic $D$ | 0.3375 |
+| Analytical $p$ | 0.0000 |
 
-$H_0^{AS}$ **rejected** (analytical $p = 0.0375$, $\alpha = 0.05$). The AS-affected junction positional distribution is significantly different from the canonical baseline.
+$H_0^{AS}$ **rejected** (analytical $p = 0.0000$, $\alpha = 0.05$). The AS-affected junction positional distribution is significantly different from the canonical baseline.
 
 ![AS junction positional distribution](figures/as_positional.png)
 
@@ -762,19 +762,19 @@ assigned to reused junctions.
 
 #### 9C Results
 
-Multi-isoform proteins ($k_p \ge 2$): $|\mathcal{P}^{(2)}|$ = 33.
+Multi-isoform proteins ($k_p \ge 2$): $|\mathcal{P}^{(2)}|$ = 11.
 
 | Statistic | Value |
 |---|---|
-| Proteins with $k_p \ge 2$ | 33 |
-| Total unique AS-affected junctions | 105 |
-| Hotspot junctions ($u_p(j) \ge 2$) | 28 |
-| Observed $\bar{H}$ | 0.2667 |
-| Expected hotspots (Bernoulli null) | 21.70 |
-| $z$ | 1.352 |
-| $p$ (one-sided) | 0.0882 |
+| Proteins with $k_p \ge 2$ | 11 |
+| Total unique AS-affected junctions | 55 |
+| Hotspot junctions ($u_p(j) \ge 2$) | 24 |
+| Observed $\bar{H}$ | 0.4364 |
+| Expected hotspots (Bernoulli null) | 20.32 |
+| $z$ | 0.817 |
+| $p$ (one-sided) | 0.2070 |
 
-$H_0^{AS}$ **not rejected** ($z = 1.352$, $p = 0.0882$, $\alpha = 0.05$). The observed hotspot count is consistent with the Bernoulli null; within-protein AS hotspot reuse is not significantly above chance.
+$H_0^{AS}$ **not rejected** ($z = 0.817$, $p = 0.2070$, $\alpha = 0.05$). The observed hotspot count is consistent with the Bernoulli null; within-protein AS hotspot reuse is not significantly above chance.
 
 ![Within-protein hotspot reuse](figures/as_hotspot.png)
 
@@ -888,8 +888,8 @@ converted to a two-sided $p$-value and BH-corrected across the five element type
 | | |
 |---|---|
 | Canonical proteins (baseline) | 227 |
-| VSP spans with domain overlap | 166 |
-| Distinct proteins covered | 74 |
+| VSP spans with domain overlap | 148 |
+| Distinct proteins covered | 68 |
 
 ---
 
@@ -897,15 +897,15 @@ converted to a two-sided $p$-value and BH-corrected across the five element type
 
 #### 10A Results
 
-$N$ = 166 VSP boundary positions.
+$N$ = 148 VSP boundary positions.
 
 | Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | $\chi^2$ | Raw $p$ | BH $p$ | Sig |
 |---|---|---|---|---|---|---|---|---|
-| β-strand | 19 | 0.114 | 0.091 | 1.263 | 1.037 | 0.3085 | 0.3856 | ns |
-| α-helix | 41 | 0.247 | 0.279 | 0.885 | 0.608 | 0.4355 | 0.4355 | ns |
-| Inter-motif | 5 | 0.030 | 0.137 | 0.220 | 13.827 | 0.0002 | 0.0005 | ** |
-| Loop (β→α) | 23 | 0.139 | 0.283 | 0.490 | 12.217 | 0.0005 | 0.0008 | ** |
-| Flanking | 78 | 0.470 | 0.211 | 2.231 | 52.957 | 0.0000 | 0.0000 | ** |
+| β-strand | 17 | 0.115 | 0.090 | 1.270 | 0.973 | 0.3240 | 0.3240 | ns |
+| α-helix | 35 | 0.236 | 0.279 | 0.847 | 0.973 | 0.3238 | 0.3240 | ns |
+| Inter-motif | 4 | 0.027 | 0.137 | 0.197 | 13.068 | 0.0003 | 0.0008 | ** |
+| Loop (β→α) | 20 | 0.135 | 0.283 | 0.478 | 11.434 | 0.0007 | 0.0012 | ** |
+| Flanking | 72 | 0.486 | 0.210 | 2.315 | 53.774 | 0.0000 | 0.0000 | ** |
 
 Chi-square $p$-values are two-sided (z-score approximation); BH correction across 5 element types.
 
@@ -917,15 +917,15 @@ Chi-square $p$-values are two-sided (z-score approximation); BH correction acros
 
 #### 10B Results
 
-$N$ = 166 VSP boundary positions.
+$N$ = 148 VSP boundary positions.
 
 | Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | $\chi^2$ | Raw $p$ | BH $p$ | Sig |
 |---|---|---|---|---|---|---|---|---|
-| β-strand | 17 | 0.102 | 0.091 | 1.130 | 0.253 | 0.6151 | 0.6151 | ns |
-| α-helix | 35 | 0.211 | 0.279 | 0.756 | 2.761 | 0.0966 | 0.1610 | ns |
-| Inter-motif | 8 | 0.048 | 0.137 | 0.352 | 9.543 | 0.0020 | 0.0050 | ** |
-| Loop (β→α) | 37 | 0.223 | 0.283 | 0.788 | 2.108 | 0.1465 | 0.1831 | ns |
-| Flanking | 69 | 0.416 | 0.211 | 1.973 | 33.122 | 0.0000 | 0.0000 | ** |
+| β-strand | 16 | 0.108 | 0.090 | 1.195 | 0.508 | 0.4758 | 0.4758 | ns |
+| α-helix | 28 | 0.189 | 0.279 | 0.677 | 4.307 | 0.0380 | 0.0633 | ns |
+| Inter-motif | 7 | 0.047 | 0.137 | 0.345 | 8.695 | 0.0032 | 0.0080 | ** |
+| Loop (β→α) | 34 | 0.230 | 0.283 | 0.812 | 1.484 | 0.2232 | 0.2790 | ns |
+| Flanking | 63 | 0.426 | 0.210 | 2.026 | 32.711 | 0.0000 | 0.0000 | ** |
 
 Chi-square $p$-values are two-sided (z-score approximation); BH correction across 5 element types.
 

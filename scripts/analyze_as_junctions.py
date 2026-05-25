@@ -33,6 +33,7 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from protein_data_collector.config import get_config
+from junction_utils import load_canonical_junctions, load_isoform_junctions
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +47,9 @@ ALABELS5 = {"beta": "beta-strand", "alpha": "alpha-helix", "inter": "Inter-motif
             "loop": "Loop (b->a)", "flanking": "Flanking"}
 COLS5    = {"beta": "#4C72B0", "alpha": "#DD8452", "inter": "#55A868",
             "loop": "#8c8c8c", "flanking": "#C44E52"}
+
+MIN_MATCH = 15   # minimum AA window for suffix match to find resync
+MAX_SLIDE = 5    # ±residues to slide can_end when searching for resync
 
 
 # ---------------------------------------------------------------------------
@@ -69,21 +73,43 @@ def _tau5(pos, motifs):
 
 
 # ---------------------------------------------------------------------------
+# Resync search (identical to analyze_as_splice_junctions.py)
+# ---------------------------------------------------------------------------
+
+def find_resync(can_seq, can_end, iso_seq):
+    offsets = [0] + [s for d in range(1, MAX_SLIDE + 1) for s in (d, -d)]
+    for delta in offsets:
+        pos = can_end + delta
+        if pos < 0 or pos >= len(can_seq):
+            continue
+        window = min(MIN_MATCH, len(can_seq) - pos)
+        if window < MIN_MATCH // 2:
+            continue
+        target  = can_seq[pos : pos + window]
+        iso_idx = iso_seq.find(target)
+        if iso_idx >= 0:
+            return pos, iso_idx, delta
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Load canonical proteins (same filter as other analysis scripts)
 # ---------------------------------------------------------------------------
 
 def load_proteins(conn):
-    """Return dict uid -> protein record (only proteins with >=1 domain-internal junction)."""
+    """Return dict uid -> protein record. Excludes proteins with no Ensembl transcript."""
+    enst_jcts = load_canonical_junctions(conn)
     rows = conn.execute("""
         SELECT uniprot_id, gene_name, domain_start, domain_end,
-               exon_annotations, motif_annotations
+               motif_annotations
         FROM   view_canonical
     """).fetchall()
     proteins = {}
-    for uid, gene, ds, de, ea, ma in rows:
-        motifs = json.loads(ma)
-        exons     = json.loads(ea)
-        junctions = [e["end"] for e in exons[:-1] if ds <= e["end"] < de]
+    for uid, gene, ds, de, ma in rows:
+        if uid not in enst_jcts:
+            continue                    # no Ensembl transcript — excluded
+        motifs    = json.loads(ma)
+        junctions = enst_jcts[uid]
         proteins[uid] = dict(uid=uid, gene=gene, ds=ds, de=de,
                              motifs=motifs, n_motifs=len(motifs),
                              junctions=junctions)
@@ -96,35 +122,71 @@ def load_proteins(conn):
 
 def load_as_isoforms(conn, proteins):
     """
-    For each entry in affected_isoforms whose canonical protein is in proteins,
-    compute J_a^AS = canonical junctions inside any VSP span (union over all VSPs).
-    Only isoforms with at least one AS junction are returned.
+    For each isoform with a matched Ensembl transcript, identify lost canonical
+    junctions by direct sequence comparison (divergence point D_seq → resync
+    R_can), consistent with analyze_as_splice_junctions.py.
+
+    VSP can_end coordinates are used only as the starting point for the suffix
+    match that locates R_can; they do not define which junctions are AS-affected.
+    Only isoforms where at least one VSP resyncs successfully contribute.
     """
+    iso_jcts = load_isoform_junctions(conn)   # isoform_id -> junction list (isoform coords)
+
+    can_seqs = {r[0]: r[1] for r in conn.execute(
+        "SELECT uniprot_id, sequence FROM canonical_analysis WHERE sequence IS NOT NULL"
+    ).fetchall()}
+
     rows = conn.execute("""
-        SELECT uniprot_id, isoform_id, vsp_domain_events
-        FROM   view_noncanonical
+        SELECT i.isoform_id, i.sequence, nc.canonical_id, nc.vsp_domain_events
+        FROM   isoforms i
+        JOIN   view_noncanonical nc ON nc.isoform_id = i.isoform_id
+        WHERE  i.is_canonical = 0
+          AND  i.sequence IS NOT NULL
+          AND  nc.vsp_domain_events IS NOT NULL
     """).fetchall()
 
     isoforms = []
-    for uid, iso_id, vsp_json in rows:
-        if uid not in proteins:
+    for iso_id, iso_seq, can_id, vde in rows:
+        if iso_id not in iso_jcts:
+            continue                    # no Ensembl transcript — excluded
+        if can_id not in proteins:
             continue
-        vsps = json.loads(vsp_json)
-        p = proteins[uid]
+        if can_id not in can_seqs:
+            continue
+
+        can_seq = can_seqs[can_id]
+        p = proteins[can_id]
+
+        # Divergence point D_seq (1-indexed canonical position)
+        diverge = None
+        for i, (ca, ia) in enumerate(zip(can_seq, iso_seq), start=1):
+            if ca != ia:
+                diverge = i
+                break
+        if diverge is None:
+            continue                    # identical or pure prefix — no AS event
+
+        # Collect lost canonical junctions across all VSPs (union, deduplicated)
+        vsps = json.loads(vde)
         as_junctions = set()
-        for vsp in vsps:
-            # can_start/can_end: VSP canonical span (full canonical sequence coordinates).
-            # overlap_start/overlap_end in the same record refer to the domain-overlap
-            # subinterval — do not use them here.
-            vs = vsp.get("can_start")
-            ve = vsp.get("can_end")
-            if vs is None or ve is None:
+        for vsp in sorted(vsps, key=lambda v: v.get("can_start", 0)):
+            can_end = vsp.get("can_end")
+            if can_end is None:
+                continue
+            resync = find_resync(can_seq, can_end, iso_seq)
+            if resync is None:
+                continue
+            R_can, _R_iso, _slide = resync
+            if diverge >= R_can:
                 continue
             for j in p["junctions"]:
-                if vs <= j <= ve:
+                if diverge <= j < R_can:
                     as_junctions.add(j)
+
         as_junctions = sorted(as_junctions)
-        isoforms.append(dict(uid=uid, isoform_id=iso_id,
+        if not as_junctions:
+            continue
+        isoforms.append(dict(uid=can_id, isoform_id=iso_id,
                              as_junctions=as_junctions,
                              n_as=len(as_junctions)))
     return isoforms
@@ -176,30 +238,35 @@ def chi_square_pvalues_9a(N_t_AS, f_t, N_AS_total):
     return pvals_raw, pvals_bh, z_scores
 
 
-def plot_8a(rho_t_AS, f_t, N_AS_total, pvals_bh, n_iso, N_AS, out):
+def plot_8a(rho_t_AS, f_t, N_AS_total, pvals_raw, pvals_bh, n_iso, N_AS, out):
     fig, ax = plt.subplots(figsize=(8, 4))
     x        = np.arange(len(CATS5))
     rho_vals = [rho_t_AS.get(t, 1.0) for t in CATS5]
 
-    # Poisson 95% CI centred at each observed rho
-    err_vals = []
+    # BH-consistent CI: z_r / sqrt(E_t), lower bar clipped so CI doesn't go below 0
+    alpha = 0.05
+    K = len(CATS5)
+    sorted_cats = sorted(CATS5, key=lambda t: pvals_raw[t])
+    ranks = {t: i + 1 for i, t in enumerate(sorted_cats)}
+    z_bh = {t: stats.norm.ppf(1 - alpha * ranks[t] / (2 * K)) for t in CATS5}
+    hws = []
     for t in CATS5:
         E_t = N_AS_total * f_t[t]
-        rho = rho_t_AS.get(t, 1.0)
-        err_vals.append(1.96 * np.sqrt(rho / E_t) if E_t > 0 else 0.0)
+        hws.append(z_bh[t] / np.sqrt(E_t) if E_t > 0 else 0.0)
+    lo_errs = [min(rho, hw) for rho, hw in zip(rho_vals, hws)]
+    hi_errs = hws
 
     ax.bar(x, rho_vals, width=0.65, color=[COLS5[t] for t in CATS5],
            alpha=0.85, zorder=3)
-    ax.errorbar(x, rho_vals, yerr=err_vals,
-                fmt="none", color="black", capsize=5, lw=1.2, zorder=4,
-                label="95% CI (Poisson)")
+    ax.errorbar(x, rho_vals, yerr=[lo_errs, hi_errs],
+                fmt="none", color="black", capsize=5, lw=1.2, zorder=4)
     ax.axhline(1.0, color="black", lw=0.8, ls="--", zorder=2)
 
     for i, t in enumerate(CATS5):
         p   = pvals_bh.get(t, float("nan"))
         sig = ("**" if p < 0.01 else ("*" if p < 0.05 else "")) if not np.isnan(p) else ""
         if sig:
-            top = rho_vals[i] + err_vals[i] + 0.04
+            top = rho_vals[i] + hi_errs[i] + 0.04
             ax.text(x[i], top, sig, ha="center", va="bottom",
                     fontsize=11, fontweight="bold")
 
@@ -209,12 +276,11 @@ def plot_8a(rho_t_AS, f_t, N_AS_total, pvals_bh, n_iso, N_AS, out):
     ax.set_title(
         f"AS junction element enrichment relative to canonical baseline\n"
         f"{n_iso} isoforms, $N^{{AS}}$ = {N_AS}  |  "
-        "error bars = 95% CI (Poisson);  ** BH $\\chi^2$ p < 0.01,  * BH $\\chi^2$ p < 0.05",
+        "error bars = BH-adjusted CI;  ** BH $\\chi^2$ p < 0.01,  * BH $\\chi^2$ p < 0.05",
         fontsize=9,
     )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.legend(fontsize=8, frameon=False, loc="upper right")
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(out, dpi=150, bbox_inches="tight")
@@ -524,7 +590,7 @@ def main():
         print(f"   {ALABELS5[t]}: z={z_scores_8a[t]:.3f}, raw p={pvals_8a[t]:.4f}, "
               f"BH p={pvals_8a_bh[t]:.4f}")
 
-    plot_8a(rho_t_AS, f_t, N_AS_total, pvals_8a_bh, n_iso, N_AS_total, args.out_8a)
+    plot_8a(rho_t_AS, f_t, N_AS_total, pvals_8a, pvals_8a_bh, n_iso, N_AS_total, args.out_8a)
 
     # ── 8B. Positional distribution ──────────────────────────────────────────
     print("\n8B. Positional distribution ...")

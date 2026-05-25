@@ -30,6 +30,7 @@ from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from protein_data_collector.config import get_config
+from junction_utils import load_canonical_junctions
 
 
 CATS5    = ["beta", "alpha", "inter", "loop", "flanking"]
@@ -65,35 +66,61 @@ def _tau5(pos, motifs):
 # ---------------------------------------------------------------------------
 
 def load_proteins(conn):
+    enst_matched = set(load_canonical_junctions(conn).keys())
     rows = conn.execute("""
-        SELECT uniprot_id, gene_name, domain_start, domain_end,
-               exon_annotations, motif_annotations
-        FROM   view_canonical
+        SELECT vc.uniprot_id, vc.gene_name, vc.domain_start, vc.domain_end,
+               vc.exon_annotations, vc.motif_annotations, ca.sequence
+        FROM   view_canonical vc
+        JOIN   canonical_analysis ca ON ca.uniprot_id = vc.uniprot_id
     """).fetchall()
     proteins = {}
-    for uid, gene, ds, de, ea, ma in rows:
+    for uid, gene, ds, de, ea, ma, seq in rows:
+        if uid not in enst_matched:
+            continue
         motifs = json.loads(ma)
         exons     = json.loads(ea)
         junctions = [e["end"] for e in exons[:-1] if ds <= e["end"] < de]
         proteins[uid] = dict(uid=uid, gene=gene, ds=ds, de=de,
-                             motifs=motifs, junctions=junctions)
+                             seq=seq, motifs=motifs, junctions=junctions)
     return proteins
 
 
-def load_vsp_boundaries(conn, proteins):
+def load_isoform_sequences(conn):
+    rows = conn.execute(
+        "SELECT isoform_id, sequence FROM isoforms WHERE sequence IS NOT NULL"
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def load_vsp_boundaries(conn, proteins, iso_seqs):
     """
     For each VSP with domain overlap return domain-clipped start and end positions.
     can_start -> max(vs, ds);  can_end -> min(ve, de-1).
+
+    Events are excluded when the isoform sequence does not actually diverge from
+    the canonical before can_end (annotation artefacts / identical sequences).
     """
     rows = conn.execute("""
-        SELECT uniprot_id, vsp_domain_events
+        SELECT uniprot_id, isoform_id, vsp_domain_events
         FROM   view_noncanonical
     """).fetchall()
 
     boundaries = []
-    for uid, vsp_json in rows:
+    for uid, iso_id, vsp_json in rows:
         if uid not in proteins:
             continue
+        if iso_id not in iso_seqs:
+            continue
+        can_seq = proteins[uid]["seq"]
+        iso_seq = iso_seqs[iso_id]
+
+        # Find first position where sequences diverge (1-indexed)
+        diverge = None
+        for i, (ca, ia) in enumerate(zip(can_seq, iso_seq), start=1):
+            if ca != ia:
+                diverge = i
+                break
+
         vsps = json.loads(vsp_json)
         p = proteins[uid]
         ds, de = p["ds"], p["de"]
@@ -103,6 +130,9 @@ def load_vsp_boundaries(conn, proteins):
             if vs is None or ve is None:
                 continue
             if ve < ds or vs >= de:          # no domain overlap
+                continue
+            # Exclude events where isoform doesn't diverge within the VSP region
+            if diverge is None or diverge >= ve:
                 continue
             boundaries.append(dict(
                 uid       = uid,
@@ -124,6 +154,33 @@ def compute_length_null(proteins):
             counts[_tau5(r, p["motifs"])] += 1
             total += 1
     return {t: counts[t] / total if total > 0 else 0.0 for t in CATS5}
+
+
+# ---------------------------------------------------------------------------
+# VSP residue coverage (Ochoa-Leyva-style: which elements are inside spans)
+# ---------------------------------------------------------------------------
+
+def compute_vsp_residue_coverage(boundaries, proteins, pi_null):
+    """
+    For each VSP span [can_start, can_end], count every residue position and
+    classify it by structural element type.  Multiple VSPs can cover the same
+    residue; each is counted separately (per-VSP coverage, not per-protein).
+    """
+    counts = defaultdict(int)
+    total  = 0
+    for bnd in boundaries:
+        uid = bnd["uid"]
+        if uid not in proteins:
+            continue
+        motifs = proteins[uid]["motifs"]
+        for pos in range(bnd["can_start"], bnd["can_end"] + 1):
+            counts[_tau5(pos, motifs)] += 1
+            total += 1
+    if total == 0:
+        return None
+    f_t   = {t: counts[t] / total for t in CATS5}
+    rho_t = {t: f_t[t] / pi_null[t] if pi_null[t] > 0 else 0.0 for t in CATS5}
+    return dict(N=total, counts=counts, f_t=f_t, rho_t=rho_t)
 
 
 # ---------------------------------------------------------------------------
@@ -181,36 +238,54 @@ def bh_correct(pvals_dict, keys):
     return {k: float(adj[i]) for i, k in enumerate(keys)}
 
 
-def plot_enrichment(rho_t, N, pi_null, endpoint_label, pvals_bh, out):
+def _bh_ci_halfwidths(pvals_raw, pi_null, N, alpha=0.05):
     """
-    Bar chart of enrichment ratios with 95% Poisson CI error bars centred at rho_t.
-    err_t = 1.96 * sqrt(rho_t / E_t)  where E_t = N * pi_null[t].
+    CI half-widths in rho scale consistent with BH-corrected stars.
+
+    Uses the test-consistent formula: half_width_t = z_t / sqrt(N * pi_t),
+    where z_t = norm.ppf(1 - alpha_eff_t / 2) and
+    alpha_eff_t = alpha * rank_t / m  (BH threshold for element t's rank).
+
+    This ensures: CI excludes 1.0  <=>  BH p < alpha, so stars and error
+    bars tell the same story.
+    """
+    m      = len(CATS5)
+    order  = sorted(CATS5, key=lambda t: pvals_raw[t])
+    ranks  = {t: r for r, t in enumerate(order, 1)}
+    errs   = {}
+    for t in CATS5:
+        alpha_eff = alpha * ranks[t] / m
+        z_t = norm.ppf(1 - alpha_eff / 2)
+        E_t = N * pi_null[t]
+        errs[t] = z_t / np.sqrt(E_t) if E_t > 0 else 0.0
+    return errs
+
+
+def plot_enrichment(rho_t, N, pi_null, endpoint_label, pvals_bh, pvals_raw, out):
+    """
+    Bar chart of enrichment ratios with BH-adjusted CI error bars centred at rho_t.
+    Half-width = z_BH(t) / sqrt(E_t), where z_BH(t) uses the BH rank-adjusted
+    critical value so that CI excludes 1.0 exactly when BH p < 0.05.
     """
     fig, ax = plt.subplots(figsize=(8, 4))
     x        = np.arange(len(CATS5))
     rho_vals = [rho_t[t] for t in CATS5]
 
-    # Poisson 95% CI half-width for each observed rho
-    err_vals = []
-    for t in CATS5:
-        pi = pi_null[t]
-        if pi > 0:
-            E_t = N * pi
-            err_vals.append(1.96 * np.sqrt(rho_t[t] / E_t) if rho_t[t] >= 0 else 0.0)
-        else:
-            err_vals.append(0.0)
+    errs     = _bh_ci_halfwidths(pvals_raw, pi_null, N)
+    err_lo   = [min(rho_vals[i], errs[t]) for i, t in enumerate(CATS5)]
+    err_hi   = [errs[t] for t in CATS5]
 
     ax.bar(x, rho_vals, width=0.65, color=[COLS5[t] for t in CATS5], alpha=0.85, zorder=3)
-    ax.errorbar(x, rho_vals, yerr=err_vals,
+    ax.errorbar(x, rho_vals, yerr=[err_lo, err_hi],
                 fmt="none", color="black", capsize=5, lw=1.2, zorder=4,
-                label="95% CI (Poisson)")
+                label="BH-adjusted CI")
     ax.axhline(1.0, color="black", lw=0.8, ls="--", zorder=2)
 
     for i, t in enumerate(CATS5):
         p   = pvals_bh[t]
         sig = "**" if p < 0.01 else ("*" if p < 0.05 else "")
         if sig:
-            ax.text(x[i], rho_vals[i] + err_vals[i] + 0.05,
+            ax.text(x[i], rho_vals[i] + err_hi[i] + 0.05,
                     sig, ha="center", va="bottom", fontsize=11, fontweight="bold")
 
     ax.set_xticks(x)
@@ -218,7 +293,7 @@ def plot_enrichment(rho_t, N, pi_null, endpoint_label, pvals_bh, out):
     ax.set_ylabel(r"$\rho_t$ (observed / length-weighted null)", fontsize=10)
     ax.set_title(
         f"VSP {endpoint_label} position enrichment vs length-weighted null\n"
-        f"$N$ = {N}  |  error bars = 95% CI (Poisson);  ** BH p < 0.01,  * BH p < 0.05",
+        f"$N$ = {N}  |  error bars = BH-adjusted CI;  ** BH p < 0.01,  * BH p < 0.05",
         fontsize=9,
     )
     ax.spines["top"].set_visible(False)
@@ -232,7 +307,8 @@ def plot_enrichment(rho_t, N, pi_null, endpoint_label, pvals_bh, out):
 
 
 def plot_combined_enrichment(rho_s, rho_e, N, pi_null,
-                             pvals_s_bh, pvals_e_bh, out):
+                             pvals_s_bh, pvals_e_bh,
+                             pvals_s_raw, pvals_e_raw, out):
     """
     Grouped bar chart showing start and end enrichment ratios together,
     one pair of bars per structural element.
@@ -242,19 +318,14 @@ def plot_combined_enrichment(rho_s, rho_e, N, pi_null,
     xs  = x - w / 2
     xe  = x + w / 2
 
-    def errs(rho_t):
-        result = []
-        for t in CATS5:
-            pi  = pi_null[t]
-            E_t = N * pi if pi > 0 else 1.0
-            result.append(1.96 * np.sqrt(rho_t[t] / E_t) if rho_t[t] >= 0 else 0.0)
-        return result
-
-    err_s = errs(rho_s)
-    err_e = errs(rho_e)
-
+    bh_s = _bh_ci_halfwidths(pvals_s_raw, pi_null, N)
+    bh_e = _bh_ci_halfwidths(pvals_e_raw, pi_null, N)
     rho_s_vals = [rho_s[t] for t in CATS5]
     rho_e_vals = [rho_e[t] for t in CATS5]
+    err_s_lo = [min(rho_s_vals[i], bh_s[t]) for i, t in enumerate(CATS5)]
+    err_s_hi = [bh_s[t] for t in CATS5]
+    err_e_lo = [min(rho_e_vals[i], bh_e[t]) for i, t in enumerate(CATS5)]
+    err_e_hi = [bh_e[t] for t in CATS5]
 
     fig, ax = plt.subplots(figsize=(9, 4.5))
 
@@ -263,9 +334,9 @@ def plot_combined_enrichment(rho_s, rho_e, N, pi_null,
     ax.bar(xe, rho_e_vals, w, color=[COLS5[t] for t in CATS5],
            alpha=0.45, zorder=3, hatch="//", label="VSP end")
 
-    ax.errorbar(xs, rho_s_vals, yerr=err_s,
+    ax.errorbar(xs, rho_s_vals, yerr=[err_s_lo, err_s_hi],
                 fmt="none", color="black", capsize=4, lw=1.0, zorder=4)
-    ax.errorbar(xe, rho_e_vals, yerr=err_e,
+    ax.errorbar(xe, rho_e_vals, yerr=[err_e_lo, err_e_hi],
                 fmt="none", color="black", capsize=4, lw=1.0, zorder=4)
 
     ax.axhline(1.0, color="black", lw=0.8, ls="--", zorder=2)
@@ -277,8 +348,8 @@ def plot_combined_enrichment(rho_s, rho_e, N, pi_null,
         return ""
 
     for i, t in enumerate(CATS5):
-        top_s = rho_s_vals[i] + err_s[i]
-        top_e = rho_e_vals[i] + err_e[i]
+        top_s = rho_s_vals[i] + err_s_hi[i]
+        top_e = rho_e_vals[i] + err_e_hi[i]
         sl = sig_label(pvals_s_bh[t])
         el = sig_label(pvals_e_bh[t])
         if sl:
@@ -293,7 +364,7 @@ def plot_combined_enrichment(rho_s, rho_e, N, pi_null,
     ax.set_ylabel(r"$\rho_t$ (observed / length-weighted null)", fontsize=10)
     ax.set_title(
         f"VSP boundary enrichment in TIM-barrel structural elements\n"
-        f"$N$ = {N} VSPs  |  error bars = 95% CI (Poisson);  *, **, *** = BH-adjusted $p$",
+        f"$N$ = {N} VSPs  |  error bars = BH-adjusted CI;  *, **, *** = BH-adjusted $p$",
         fontsize=9,
     )
     ax.spines["top"].set_visible(False)
@@ -307,7 +378,7 @@ def plot_combined_enrichment(rho_s, rho_e, N, pi_null,
     print(f"Saved {out}")
 
 
-def plot_pooled_enrichment(N_t_s, N_t_e, N_total, pi_null, pvals_bh, out):
+def plot_pooled_enrichment(N_t_s, N_t_e, N_total, pi_null, pvals_bh, pvals_raw, out):
     """
     Single bar chart treating start and end positions as one pooled set.
     N_total = 2 * number of VSPs; N_t = N_t_start + N_t_end per element.
@@ -318,18 +389,16 @@ def plot_pooled_enrichment(N_t_s, N_t_e, N_total, pi_null, pvals_bh, out):
 
     x        = np.arange(len(CATS5))
     rho_vals = [rho_t[t] for t in CATS5]
-    err_vals = [
-        1.96 * np.sqrt(rho_t[t] / (N_total * pi_null[t]))
-        if pi_null[t] > 0 and rho_t[t] >= 0 else 0.0
-        for t in CATS5
-    ]
+    bh_hw    = _bh_ci_halfwidths(pvals_raw, pi_null, N_total)
+    err_lo   = [min(rho_vals[i], bh_hw[t]) for i, t in enumerate(CATS5)]
+    err_hi   = [bh_hw[t] for t in CATS5]
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.bar(x, rho_vals, width=0.6, color=[COLS5[t] for t in CATS5],
            alpha=0.85, zorder=3)
-    ax.errorbar(x, rho_vals, yerr=err_vals,
+    ax.errorbar(x, rho_vals, yerr=[err_lo, err_hi],
                 fmt="none", color="black", capsize=5, lw=1.2, zorder=4,
-                label="95% CI (Poisson)")
+                label="BH-adjusted CI")
     ax.axhline(1.0, color="black", lw=0.8, ls="--", zorder=2)
 
     def sig_label(p):
@@ -341,7 +410,7 @@ def plot_pooled_enrichment(N_t_s, N_t_e, N_total, pi_null, pvals_bh, out):
     for i, t in enumerate(CATS5):
         sl = sig_label(pvals_bh[t])
         if sl:
-            ax.text(x[i], rho_vals[i] + err_vals[i] + 0.04, sl,
+            ax.text(x[i], rho_vals[i] + err_hi[i] + 0.04, sl,
                     ha="center", va="bottom", fontsize=10, fontweight="bold")
 
     ax.set_xticks(x)
@@ -349,7 +418,7 @@ def plot_pooled_enrichment(N_t_s, N_t_e, N_total, pi_null, pvals_bh, out):
     ax.set_ylabel(r"$\rho_t$ (observed / length-weighted null)", fontsize=10)
     ax.set_title(
         "VSP boundary enrichment in TIM-barrel structural elements\n"
-        f"(start + end pooled, $N$ = {N_total}  |  error bars = 95% CI (Poisson))",
+        f"(start + end pooled, $N$ = {N_total}  |  error bars = BH-adjusted CI)",
         fontsize=9,
     )
     ax.spines["top"].set_visible(False)
@@ -361,6 +430,65 @@ def plot_pooled_enrichment(N_t_s, N_t_e, N_total, pi_null, pvals_bh, out):
     fig.savefig(out, dpi=150, bbox_inches="tight")
     print(f"Saved {out}")
     return N_t, f_t, rho_t
+
+
+# ---------------------------------------------------------------------------
+# VSP residue coverage figure
+# ---------------------------------------------------------------------------
+
+def plot_residue_coverage(cov, pi_null, pvals_bh, out):
+    from scipy.stats import chi2 as _chi2
+    x        = np.arange(len(CATS5))
+    rho_vals = [cov["rho_t"][t] for t in CATS5]
+    N        = cov["N"]
+
+    lo_errs, hi_errs = [], []
+    for t in CATS5:
+        k   = cov["counts"][t]
+        E_t = N * pi_null[t]
+        if E_t > 0 and k > 0:
+            lo = _chi2.ppf(0.025, 2 * k)       / (2 * E_t)
+            hi = _chi2.ppf(0.975, 2 * (k + 1)) / (2 * E_t)
+            lo_errs.append(max(cov["rho_t"][t] - lo, 0.0))
+            hi_errs.append(max(hi - cov["rho_t"][t], 0.0))
+        else:
+            lo_errs.append(0.0)
+            hi_errs.append(0.0)
+
+    def sig_label(p):
+        if p < 0.001: return "***"
+        if p < 0.01:  return "**"
+        if p < 0.05:  return "*"
+        return ""
+
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    ax.bar(x, rho_vals, width=0.6, color=[COLS5[t] for t in CATS5],
+           alpha=0.85, zorder=3)
+    ax.errorbar(x, rho_vals, yerr=[lo_errs, hi_errs],
+                fmt="none", color="black", capsize=5, lw=1.2, zorder=4)
+    ax.axhline(1.0, color="black", lw=0.8, ls="--", zorder=2)
+
+    for i, t in enumerate(CATS5):
+        sl = sig_label(pvals_bh[t])
+        if sl:
+            ax.text(x[i], rho_vals[i] + hi_errs[i] + 0.01, sl,
+                    ha="center", va="bottom", fontsize=10, fontweight="bold")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([MDLABELS[t] for t in CATS5], fontsize=9)
+    ax.set_ylabel(r"$\rho_t$ (observed / length-weighted null)", fontsize=10)
+    ax.set_title(
+        "Structural content of VSP spans\n"
+        f"$N$ = {N} residue-positions  |  error bars = 95% CI (Poisson);  *** BH $p$ < 0.001",
+        fontsize=9,
+    )
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"Saved {out}")
 
 
 # ---------------------------------------------------------------------------
@@ -698,14 +826,16 @@ def main():
     parser.add_argument("--out-10a",      default="figures/vsp_start_enrichment.png")
     parser.add_argument("--out-10b",      default="figures/vsp_end_enrichment.png")
     parser.add_argument("--out-combined", default="figures/vsp_boundary_enrichment.png")
-    parser.add_argument("--out-pooled",   default="figures/vsp_boundary_pooled.png")
+    parser.add_argument("--out-pooled",    default="figures/vsp_boundary_pooled.png")
+    parser.add_argument("--out-coverage",  default="figures/vsp_residue_coverage.png")
     parser.add_argument("--md",        default="Statistical-Analysis.md")
     args = parser.parse_args()
 
     db_path    = args.db or get_config().db_path
     conn       = sqlite3.connect(db_path)
     proteins   = load_proteins(conn)
-    boundaries = load_vsp_boundaries(conn, proteins)
+    iso_seqs   = load_isoform_sequences(conn)
+    boundaries = load_vsp_boundaries(conn, proteins, iso_seqs)
     conn.close()
 
     n_prot    = len(proteins)
@@ -730,7 +860,7 @@ def main():
         print(f"   {LABELS5[t]}: N={N_t_s[t]}, f={f_t_s[t]:.3f}, "
               f"pi={pi_null[t]:.3f}, rho={rho_t_s[t]:.3f}, "
               f"raw p={pvals_s_raw[t]:.4f}, BH p={pvals_s_bh[t]:.4f}")
-    plot_enrichment(rho_t_s, n_vsps, pi_null, "start", pvals_s_bh, args.out_10a)
+    plot_enrichment(rho_t_s, n_vsps, pi_null, "start", pvals_s_bh, pvals_s_raw, args.out_10a)
 
     # -- 10B: end positions --------------------------------------------------
     print("\n10B. VSP end positions (chi-square) ...")
@@ -740,11 +870,12 @@ def main():
         print(f"   {LABELS5[t]}: N={N_t_e[t]}, f={f_t_e[t]:.3f}, "
               f"pi={pi_null[t]:.3f}, rho={rho_t_e[t]:.3f}, "
               f"raw p={pvals_e_raw[t]:.4f}, BH p={pvals_e_bh[t]:.4f}")
-    plot_enrichment(rho_t_e, n_vsps, pi_null, "end", pvals_e_bh, args.out_10b)
+    plot_enrichment(rho_t_e, n_vsps, pi_null, "end", pvals_e_bh, pvals_e_raw, args.out_10b)
 
     # -- Combined start + end figure -----------------------------------------
     plot_combined_enrichment(rho_t_s, rho_t_e, n_vsps, pi_null,
-                             pvals_s_bh, pvals_e_bh, args.out_combined)
+                             pvals_s_bh, pvals_e_bh,
+                             pvals_s_raw, pvals_e_raw, args.out_combined)
 
     # -- Pooled: start + end as one set --------------------------------------
     N_pooled = 2 * n_vsps
@@ -757,12 +888,32 @@ def main():
         pvals_pooled_raw[t] = float(2 * _norm.sf(abs(z)))
     pvals_pooled_bh = bh_correct(pvals_pooled_raw, CATS5)
     N_t_pool_d, _, rho_t_pool_d = plot_pooled_enrichment(
-        N_t_s, N_t_e, N_pooled, pi_null, pvals_pooled_bh, args.out_pooled
+        N_t_s, N_t_e, N_pooled, pi_null, pvals_pooled_bh, pvals_pooled_raw, args.out_pooled
     )
     print("\nPooled boundary enrichment:")
     for t in CATS5:
         print(f"   {LABELS5[t]}: N={N_t_pool_d[t]}, rho={rho_t_pool_d[t]:.3f}, "
               f"BH p={pvals_pooled_bh[t]:.4f}")
+
+    # -- VSP residue coverage (Ochoa-Leyva comparison) -----------------------
+    from scipy.stats import norm as _norm2
+    cov = compute_vsp_residue_coverage(boundaries, proteins, pi_null)
+    if cov:
+        cov_pvals_raw = {}
+        for t in CATS5:
+            E_t = cov["N"] * pi_null[t]
+            z   = (cov["counts"][t] - E_t) / np.sqrt(E_t) if pi_null[t] > 0 else 0.0
+            cov_pvals_raw[t] = float(2 * _norm2.sf(abs(z)))
+        cov_pvals_bh = bh_correct(cov_pvals_raw, CATS5)
+        print(f"\nVSP residue coverage (Ochoa-Leyva-style)  —  N = {cov['N']} residue-positions")
+        print(f"  {'Element':<16}  {'Count':>7}  {'f_t':>7}  {'pi_t':>7}  {'rho':>6}  {'p_raw':>7}  {'p_BH':>7}  Sig")
+        print("  " + "-"*16 + "  " + "  ".join(["-"*7]*5 + ["-"*7, "---"]))
+        for t in CATS5:
+            sig = "***" if cov_pvals_bh[t] < 0.001 else ("**" if cov_pvals_bh[t] < 0.01 else ("*" if cov_pvals_bh[t] < 0.05 else "ns"))
+            print(f"  {LABELS5[t]:<16}  {cov['counts'][t]:>7}  {cov['f_t'][t]:>7.4f}  "
+                  f"{pi_null[t]:>7.4f}  {cov['rho_t'][t]:>6.3f}  "
+                  f"{cov_pvals_raw[t]:>7.4f}  {cov_pvals_bh[t]:>7.4f}  {sig}")
+        plot_residue_coverage(cov, pi_null, cov_pvals_bh, args.out_coverage)
 
     # -- Build markdown ------------------------------------------------------
     dataset_md = (

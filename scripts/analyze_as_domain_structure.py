@@ -37,6 +37,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats as scipy_stats
+from scipy.spatial.distance import pdist
+from scipy.cluster.hierarchy import linkage, leaves_list
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from protein_data_collector.config import get_config
@@ -50,14 +52,14 @@ PDB_ISO_DIR = Path("data/alphafold_isoforms")
 
 def load_canonical(conn):
     rows = conn.execute("""
-        SELECT vc.uniprot_id, vc.domain_start, vc.domain_end, vc.motif_annotations,
-               i.sequence_length
+        SELECT vc.uniprot_id, vc.gene_name, vc.domain_start, vc.domain_end,
+               vc.motif_annotations, i.sequence_length
         FROM   view_canonical vc
         JOIN   isoforms i ON i.uniprot_id = vc.uniprot_id AND i.is_canonical = 1
     """).fetchall()
     out = {}
-    for uid, ds, de, mj, slen in rows:
-        out[uid] = dict(ds=ds, de=de, motifs=json.loads(mj), slen=slen)
+    for uid, gene, ds, de, mj, slen in rows:
+        out[uid] = dict(gene=gene or uid, ds=ds, de=de, motifs=json.loads(mj), slen=slen)
     return out
 
 
@@ -306,6 +308,151 @@ def plot_disruption_separate(separate_per_isoform, out):
 
 
 # ---------------------------------------------------------------------------
+# Canonical motif-count distribution figure
+# ---------------------------------------------------------------------------
+
+def plot_canonical_kp(canonicals, uids_with_isoforms, out):
+    """Grouped bar chart of K_p distribution: all canonicals vs. those with AS isoforms."""
+    all_kp  = [len(v["motifs"]) for v in canonicals.values()]
+    iso_kp  = [len(canonicals[u]["motifs"]) for u in uids_with_isoforms if u in canonicals]
+    n_all   = len(all_kp)
+    n_iso   = len(iso_kp)
+
+    all_counter = Counter(all_kp)
+    iso_counter = Counter(iso_kp)
+    kp_vals = sorted(all_counter)
+
+    w  = 0.35
+    x  = np.array(kp_vals)
+    xa = x - w / 2
+    xi = x + w / 2
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    bars_all = ax.bar(xa, [all_counter[k] for k in kp_vals], width=w,
+                      color="#4C72B0", alpha=0.85, edgecolor="white", zorder=3,
+                      label=f"All canonical (n={n_all})")
+    bars_iso = ax.bar(xi, [iso_counter.get(k, 0) for k in kp_vals], width=w,
+                      color="#DD8452", alpha=0.85, edgecolor="white", zorder=3,
+                      label=f"With AS isoforms (n={n_iso})")
+
+    for bar in bars_all:
+        h = bar.get_height()
+        if h > 0:
+            ax.text(bar.get_x() + bar.get_width() / 2, h + 0.3, str(int(h)),
+                    ha="center", va="bottom", fontsize=8)
+    for bar in bars_iso:
+        h = bar.get_height()
+        if h > 0:
+            ax.text(bar.get_x() + bar.get_width() / 2, h + 0.3, str(int(h)),
+                    ha="center", va="bottom", fontsize=8)
+
+    ax.set_xlabel("Annotated (beta/alpha) motifs per protein ($K_p$)", fontsize=10)
+    ax.set_ylabel("Number of canonical proteins", fontsize=10)
+    ax.set_xticks(x)
+    ax.set_title("Distribution of annotated TIM-barrel motif count ($K_p$)\n"
+                 "all canonical proteins vs. those with at least one AS isoform",
+                 fontsize=9)
+    ax.legend(fontsize=9, frameon=False)
+    ax.yaxis.grid(True, linestyle=":", alpha=0.4, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"Saved {out}")
+
+
+# ---------------------------------------------------------------------------
+# Per-protein motif disruption heatmap
+# ---------------------------------------------------------------------------
+
+def plot_motif_heatmap(isoforms, combined_map, canonicals, out):
+    """
+    Heatmap: rows = canonical proteins with AS isoforms, columns = motif positions 1-8.
+    Cell value = fraction of that protein's isoforms where the motif is disrupted
+    (partial or removed).  NaN where the protein has no annotation at that position.
+    Proteins sorted by total disruption (most disrupted at top).
+    """
+    # Group isoform states by canonical uid
+    uid_to_states = {}   # uid -> list of state-lists (one per isoform)
+    for iso in isoforms:
+        uid = iso["uniprot_id"]
+        iso_id = iso["isoform_id"]
+        if iso_id not in combined_map:
+            continue
+        uid_to_states.setdefault(uid, []).append(combined_map[iso_id])
+
+    N_POS = 8
+    uids = sorted(uid_to_states)
+
+    # Build binary disruption matrix: 1 = disrupted in at least one isoform, 0 = intact in all.
+    # NaN = motif position not annotated for that protein.
+    mat = np.full((len(uids), N_POS), np.nan)
+    for row, uid in enumerate(uids):
+        kp = len(canonicals[uid]["motifs"])
+        for col in range(min(kp, N_POS)):
+            states = uid_to_states[uid]
+            relevant = [st for st in states if len(st) > col]
+            if relevant:
+                mat[row, col] = float(any(st[col] != "intact" for st in relevant))
+
+    # Hierarchical clustering on rows (Jaccard distance, average linkage).
+    # NaN positions filled with 0 for distance computation only.
+    mat_filled = np.where(np.isnan(mat), 0.0, mat)
+    if len(uids) > 1:
+        dist  = pdist(mat_filled, metric="jaccard")
+        dist  = np.nan_to_num(dist, nan=1.0)   # all-zero rows → maximally distant
+        Z     = linkage(dist, method="average")
+        order = leaves_list(Z)
+    else:
+        order = [0]
+    mat  = mat[order]
+    uids = [uids[i] for i in order]
+
+    labels = [canonicals[u]["gene"] for u in uids]
+    n_prot = len(uids)
+    n_iso  = sum(len(uid_to_states[u]) for u in uids)
+
+    fig_h = max(5, n_prot * 0.28)
+    fig, ax = plt.subplots(figsize=(7, fig_h))
+
+    masked = np.ma.masked_invalid(mat)
+    cmap = matplotlib.colors.ListedColormap(["#f7f7f7", "#C44E52"])
+    cmap.set_bad(color="#d0d0d0")   # grey for unannotated positions
+
+    im = ax.imshow(masked, cmap=cmap, vmin=0, vmax=1,
+                   aspect="auto", interpolation="nearest")
+
+    ax.set_xticks(range(N_POS))
+    ax.set_xticklabels([f"M{k}" for k in range(1, N_POS + 1)], fontsize=9)
+    ax.set_yticks(range(n_prot))
+    ax.set_yticklabels(labels, fontsize=7)
+    ax.set_xlabel("Barrel motif position", fontsize=10)
+    ax.set_title(
+        f"Per-protein motif disruption across AS isoforms\n"
+        f"{n_prot} canonical proteins, {n_iso} isoforms  "
+        f"(red = disrupted in ≥1 isoform; white = intact in all isoforms)",
+        fontsize=9,
+    )
+
+    # Add thin grid lines between cells
+    ax.set_xticks(np.arange(-0.5, N_POS, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, n_prot, 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=0.5)
+    ax.tick_params(which="minor", length=0)
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
+    cbar.set_ticks([0.25, 0.75])
+    cbar.set_ticklabels(["intact in all", "disrupted in ≥1"], fontsize=7)
+    cbar.ax.tick_params(length=0)
+
+    fig.tight_layout()
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"Saved {out}")
+
+
+# ---------------------------------------------------------------------------
 # TSV summary
 # ---------------------------------------------------------------------------
 
@@ -356,6 +503,8 @@ def main():
     parser.add_argument("--db",              default=None)
     parser.add_argument("--out-combined",    default="figures/as_domain_disruption.png")
     parser.add_argument("--out-separate",    default="figures/as_domain_disruption_separate.png")
+    parser.add_argument("--out-canonical-kp", default="figures/canonical_kp_distribution.png")
+    parser.add_argument("--out-heatmap",     default="figures/motif_disruption_heatmap.png")
     parser.add_argument("--out-tsv",         default="data/domain_disruption_summary.tsv")
     args = parser.parse_args()
 
@@ -415,6 +564,9 @@ def main():
 
     plot_disruption_combined(combined_list, args.out_combined)
     plot_disruption_separate(separate_list, args.out_separate)
+    uids_with_isoforms = {iso["uniprot_id"] for iso in isoforms}
+    plot_canonical_kp(canonicals, uids_with_isoforms, args.out_canonical_kp)
+    plot_motif_heatmap(isoforms, combined_map, canonicals, args.out_heatmap)
     write_summary(isoforms, combined_map, separate_map, args.out_tsv)
 
     # --- pLDDT (summary only, no figure) ---

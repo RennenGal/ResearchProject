@@ -44,6 +44,7 @@ from scipy.stats import norm
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from protein_data_collector.config import get_config
+from junction_utils import load_canonical_junctions
 
 
 # ---------------------------------------------------------------------------
@@ -121,16 +122,18 @@ def build_type_array(ds, de, motifs):
 # ---------------------------------------------------------------------------
 
 def load_proteins(conn):
+    enst_jcts = load_canonical_junctions(conn)
     rows = conn.execute("""
         SELECT uniprot_id, gene_name, domain_start, domain_end,
-               exon_annotations, motif_annotations
+               motif_annotations
         FROM   view_canonical
     """).fetchall()
     proteins = []
-    for uid, gene, ds, de, ea, ma in rows:
-        motifs = json.loads(ma)
-        exons     = json.loads(ea)
-        junctions = [e["end"] for e in exons[:-1] if ds <= e["end"] < de]
+    for uid, gene, ds, de, ma in rows:
+        if uid not in enst_jcts:
+            continue                    # no Ensembl transcript — excluded
+        motifs    = json.loads(ma)
+        junctions = enst_jcts[uid]
         proteins.append(dict(uid=uid, gene=gene, ds=ds, de=de,
                              motifs=motifs, n_motifs=len(motifs),
                              junctions=junctions, n_p=len(junctions)))
@@ -244,16 +247,16 @@ def sig_stars(p):
 
 
 # ---------------------------------------------------------------------------
+# Per-protein fingerprint matrix
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Heatmap figure
 # ---------------------------------------------------------------------------
 
-def plot_heatmap(result, pvals_bh, n_prot_full, out):
-    """
-    4 × 8 heatmap: rows = β/loop/α/inter, columns = motifs 1–8.
-    Inter-motif has only 7 positions (k=1..7); column 8 is left blank.
-    Color encodes ρ (diverging, centred at 1).  Cell text shows ρ and
-    significance stars.
-    """
+def plot_heatmap(result, pvals_bh, n_prot_full, proteins, out):
+    """4×8 enrichment heatmap (ρ, diverging, centred at 1). Rows: β/loop/α/inter. Columns: motifs 1–8."""
+    # ---- Build enrichment grid (top panel) ----
     all_rows  = ELEM_TYPES + ["inter"]
     rho_grid  = np.full((4, 8), np.nan)
     sig_grid  = [[""] * 8 for _ in range(4)]
@@ -267,47 +270,47 @@ def plot_heatmap(result, pvals_bh, n_prot_full, out):
             sig_grid[ri][k - 1]  = sig_stars(pvals_bh.get(cat, float("nan")))
             nprot_row[ri, k - 1] = result["n_prot_cat"].get(cat, 0)
 
-    # Diverging colormap centred at 1.0
     vmax = max(0.3, float(np.nanmax(np.abs(rho_grid - 1)))) + 0.05
-    vmin, vmax_plot = 1 - vmax, 1 + vmax
+    vmin_plot, vmax_plot = 1 - vmax, 1 + vmax
 
-    fig, ax = plt.subplots(figsize=(11, 5.0))
-    im = ax.imshow(rho_grid, cmap="RdBu_r",
-                   vmin=vmin, vmax=vmax_plot, aspect="auto")
+    # ---- Layout ----
+    fig, ax_top = plt.subplots(figsize=(11, 5))
 
-    # Cell annotations
+    im_top = ax_top.imshow(rho_grid, cmap="RdBu_r",
+                           vmin=vmin_plot, vmax=vmax_plot, aspect="auto")
+
     for ri in range(4):
         for ci in range(8):
-            rho = rho_grid[ri, ci]
+            rho  = rho_grid[ri, ci]
             star = sig_grid[ri][ci]
             if not np.isnan(rho):
                 color = "white" if abs(rho - 1) > vmax * 0.6 else "black"
                 label = f"{rho:.2f}"
                 if star:
                     label += f"\n{star}"
-                ax.text(ci, ri, label, ha="center", va="center",
-                        fontsize=8, color=color, fontweight="bold" if star else "normal")
+                ax_top.text(ci, ri, label, ha="center", va="center",
+                            fontsize=8, color=color,
+                            fontweight="bold" if star else "normal")
 
-    ax.set_xticks(range(8))
-    ax.set_xticklabels(
+    ax_top.set_xticks(range(8))
+    ax_top.set_xticklabels(
         [f"Motif {k}\n(n={nprot_row[0, k-1]})" for k in range(1, 9)],
         fontsize=8,
     )
-    ax.set_yticks(range(4))
-    ax.set_yticklabels([ELEM_LABELS[e] for e in ELEM_TYPES + ["inter"]], fontsize=9)
-    ax.set_title(
+    ax_top.set_yticks(range(4))
+    ax_top.set_yticklabels([ELEM_LABELS[e] for e in ELEM_TYPES + ["inter"]], fontsize=9)
+    ax_top.set_title(
         "Motif-specific junction enrichment  ($\\rho_{(t,k)}$ = observed / null fraction)\n"
         "* BH $p$ < 0.05   ** $p$ < 0.01   *** $p$ < 0.001",
         fontsize=9,
     )
+    cbar_top = fig.colorbar(im_top, ax=ax_top, fraction=0.03, pad=0.02)
+    cbar_top.set_label("Enrichment ratio $\\rho$", fontsize=8)
+    cbar_top.ax.axhline(1.0, color="black", lw=0.8, ls="--")
 
-    cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
-    cbar.set_label("Enrichment ratio $\\rho$", fontsize=8)
-    cbar.ax.axhline(1.0, color="black", lw=0.8, ls="--")
-
-    fig.tight_layout()
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     print(f"Saved {out}")
 
 
@@ -506,7 +509,7 @@ def main():
                   f"{sig_stars(pvals_bh[cat]) or 'ns'}")
         print()
 
-    plot_heatmap(result, pvals_bh, n_full, args.out_heatmap)
+    plot_heatmap(result, pvals_bh, n_full, proteins, args.out_heatmap)
 
     md_path = Path(args.md)
     if md_path.exists():

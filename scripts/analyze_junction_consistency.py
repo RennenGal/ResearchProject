@@ -29,6 +29,7 @@ from scipy import stats
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from protein_data_collector.config import get_config
+from junction_utils import load_canonical_junctions
 
 
 # ---------------------------------------------------------------------------
@@ -36,22 +37,23 @@ from protein_data_collector.config import get_config
 # ---------------------------------------------------------------------------
 
 def load_proteins(conn):
+    enst_jcts = load_canonical_junctions(conn)
     rows = conn.execute("""
         SELECT uniprot_id, gene_name, domain_start, domain_end,
-               exon_annotations, motif_annotations
-        FROM   canonical_analysis
-        WHERE  exon_annotations  IS NOT NULL
-          AND  motif_annotations IS NOT NULL
+               motif_annotations
+        FROM   view_canonical
+        WHERE  motif_annotations IS NOT NULL
           AND  domain_start      IS NOT NULL
           AND  domain_end        IS NOT NULL
     """).fetchall()
     proteins = []
-    for uid, gene, ds, de, ea, ma in rows:
-        motifs = json.loads(ma)
-        exons     = json.loads(ea)
-        junctions = [e["end"] for e in exons[:-1] if ds <= e["end"] < de]
+    for uid, gene, ds, de, ma in rows:
+        if uid not in enst_jcts:
+            continue                    # no Ensembl transcript — excluded
+        junctions = enst_jcts[uid]
         if not junctions:
             continue
+        motifs = json.loads(ma)
         proteins.append(dict(uid=uid, gene=gene, ds=ds, de=de,
                              motifs=motifs, n_motifs=len(motifs),
                              junctions=junctions, n_p=len(junctions)))
