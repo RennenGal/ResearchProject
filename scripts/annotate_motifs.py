@@ -19,7 +19,6 @@ Usage
     python scripts/annotate_motifs.py --log-level DEBUG
 """
 
-import argparse
 import json
 import logging
 import sqlite3
@@ -34,7 +33,6 @@ import requests
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.analysis.motif_annotator import identify_ba_motifs
-from protein_data_collector.config import get_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -139,7 +137,7 @@ def annotate_protein(
 # Main loop
 # ---------------------------------------------------------------------------
 
-def run(
+def _annotate(
     conn: sqlite3.Connection,
     cache_dir: Path,
     limit: int | None,
@@ -244,36 +242,16 @@ def print_summary(conn: sqlite3.Connection, stats: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# Pipeline entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Annotate TIM barrel beta-alpha motifs via AlphaFold + pydssp"
-    )
-    parser.add_argument("--db",        default=None)
-    parser.add_argument("--cache-dir", default="data/alphafold_pdb",
-                        help="Directory for cached AlphaFold PDB files")
-    parser.add_argument("--limit",     type=int, default=None,
-                        help="Process at most N proteins (useful for testing)")
-    parser.add_argument("--rerun",     action="store_true",
-                        help="Re-annotate proteins that already have motif_annotations")
-    parser.add_argument("--log-level", default="INFO")
-    args = parser.parse_args()
-
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
-
-    cache_dir = Path(args.cache_dir)
+def run(db_path: str) -> None:
+    cache_dir = Path("data/alphafold_pdb")
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    db_path = args.db or get_config().db_path
     conn = sqlite3.connect(db_path)
 
-    stats = run(conn, cache_dir, args.limit, args.rerun)
+    stats = _annotate(conn, cache_dir, limit=None, rerun=False)
     print_summary(conn, stats)
 
     conn.close()
-
-
-if __name__ == "__main__":
-    main()

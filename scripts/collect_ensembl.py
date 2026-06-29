@@ -22,7 +22,6 @@ Usage:
     python scripts/collect_ensembl.py --rebuild         # drop and re-collect everything
 """
 
-import argparse
 import json
 import logging
 import sqlite3
@@ -41,8 +40,8 @@ from protein_data_collector.api.ensembl_client import (
     ensg_for_enst,
     transcripts_for_gene,
     protein_sequence,
+    transcript_exon_boundaries,
 )
-from protein_data_collector.config import get_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -285,40 +284,116 @@ def run_alignment_analysis(conn: sqlite3.Connection) -> tuple[int, int, int]:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# Merge A: backfill_exons logic (merged from backfill_exons.py)
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Expand TIM barrel coverage with Ensembl protein-coding transcripts"
-    )
-    parser.add_argument("--db",            default=None, help="Override DB path")
-    parser.add_argument("--limit",         type=int, default=None,
-                        help="Process only the first N proteins (for testing)")
-    parser.add_argument("--skip-analysis", action="store_true",
-                        help="Collect transcripts only, skip alignment analysis")
-    parser.add_argument("--rebuild",       action="store_true",
-                        help="Drop and re-collect all Ensembl data")
-    parser.add_argument("--log-level",     default="INFO")
-    args = parser.parse_args()
+_BACKFILL_TRANSCRIPT_TABLE = "ensembl_transcripts"
+_BACKFILL_AFFECTED_TABLE   = "ensembl_affected"
 
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
 
-    db_path = args.db or get_config().db_path
+def _ensure_exon_columns(conn: sqlite3.Connection) -> None:
+    existing_enst = {r[1] for r in conn.execute(f"PRAGMA table_info({_BACKFILL_TRANSCRIPT_TABLE})")}
+    if "exon_annotations" not in existing_enst:
+        conn.execute(f"ALTER TABLE {_BACKFILL_TRANSCRIPT_TABLE} ADD COLUMN exon_annotations TEXT")
+        logger.info("Added exon_annotations column to %s", _BACKFILL_TRANSCRIPT_TABLE)
+    if "duplicate_enst_id" not in existing_enst:
+        conn.execute(f"ALTER TABLE {_BACKFILL_TRANSCRIPT_TABLE} ADD COLUMN duplicate_enst_id TEXT")
+        logger.info("Added duplicate_enst_id column to %s", _BACKFILL_TRANSCRIPT_TABLE)
+
+    existing_aff = {r[1] for r in conn.execute(f"PRAGMA table_info({_BACKFILL_AFFECTED_TABLE})")}
+    if "exon_boundary_in_domain" not in existing_aff:
+        conn.execute(
+            f"ALTER TABLE {_BACKFILL_AFFECTED_TABLE} "
+            f"ADD COLUMN exon_boundary_in_domain INTEGER NOT NULL DEFAULT 0"
+        )
+        logger.info("Added exon_boundary_in_domain column to %s", _BACKFILL_AFFECTED_TABLE)
+    if "exon_boundaries_in_domain_count" not in existing_aff:
+        conn.execute(
+            f"ALTER TABLE {_BACKFILL_AFFECTED_TABLE} "
+            f"ADD COLUMN exon_boundaries_in_domain_count INTEGER NOT NULL DEFAULT 0"
+        )
+        logger.info("Added exon_boundaries_in_domain_count column to %s", _BACKFILL_AFFECTED_TABLE)
+
+    conn.commit()
+
+
+def _backfill_exon_annotations(conn: sqlite3.Connection) -> int:
+    """Fetch exon boundaries from Ensembl for transcripts missing exon_annotations."""
+    rows = conn.execute(
+        f"SELECT enst_id FROM {_BACKFILL_TRANSCRIPT_TABLE} WHERE exon_annotations IS NULL"
+    ).fetchall()
+    total = len(rows)
+    logger.info("Fetching exon boundaries for %d transcripts", total)
+
+    updated = 0
+    for i, (enst_id,) in enumerate(rows, 1):
+        boundaries = transcript_exon_boundaries(enst_id)
+        annotation = json.dumps(boundaries)
+        conn.execute(
+            f"UPDATE {_BACKFILL_TRANSCRIPT_TABLE} SET exon_annotations=? WHERE enst_id=?",
+            (annotation, enst_id),
+        )
+        updated += 1
+        if i % 100 == 0 or i == total:
+            conn.commit()
+            logger.info("  %d / %d transcripts processed", i, total)
+
+    conn.commit()
+    return updated
+
+
+def _flag_exon_boundary_in_domain(conn: sqlite3.Connection) -> tuple[int, int]:
+    """Flag exon boundaries that fall inside the domain in ensembl_affected."""
+    rows = conn.execute(f"""
+        SELECT
+            aff.id,
+            aff.domain_location,
+            et.exon_annotations
+        FROM {_BACKFILL_AFFECTED_TABLE} aff
+        JOIN {_BACKFILL_TRANSCRIPT_TABLE} et ON et.enst_id = aff.enst_id
+        WHERE et.exon_annotations IS NOT NULL
+    """).fetchall()
+
+    logger.info("Evaluating exon boundaries for %d AS-affected transcripts", len(rows))
+
+    flagged = 0
+    for row_id, domain_loc_raw, exon_ann_raw in rows:
+        flag = 0
+        count = 0
+        try:
+            domain_loc  = json.loads(domain_loc_raw)
+            dom_start   = domain_loc["start"]
+            dom_end     = domain_loc["end"]
+            boundaries  = json.loads(exon_ann_raw)
+            count = sum(1 for b in boundaries if dom_start <= b < dom_end)
+            if count > 0:
+                flag = 1
+                flagged += 1
+        except (TypeError, KeyError, json.JSONDecodeError):
+            pass
+
+        conn.execute(
+            f"UPDATE {_BACKFILL_AFFECTED_TABLE} "
+            f"SET exon_boundary_in_domain=?, exon_boundaries_in_domain_count=? WHERE id=?",
+            (flag, count, row_id),
+        )
+
+    conn.commit()
+    logger.info("Flagged %d / %d AS-affected transcripts as exon_boundary_in_domain=1",
+                flagged, len(rows))
+    return flagged, len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline entry point
+# ---------------------------------------------------------------------------
+
+def run(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    if args.rebuild:
-        logger.info("--rebuild: clearing ensembl_affected and ensembl_transcripts")
-        conn.execute(f"DELETE FROM {_AFFECTED_TABLE}")
-        conn.execute(f"DELETE FROM {_TRANSCRIPT_TABLE}")
-        conn.commit()
-
     # Step 1: resolve ENSG IDs
     ensg_map = _build_ensg_map(conn)
-    if args.limit:
-        ensg_map = dict(list(ensg_map.items())[:args.limit])
-        logger.info("--limit %d: processing %d proteins", args.limit, len(ensg_map))
 
     # Step 2+3: collect transcripts
     uniprot_seqs   = _existing_uniprot_sequences(conn)
@@ -329,12 +404,12 @@ def main() -> None:
     inserted = collect_transcripts(conn, ensg_map, uniprot_seqs, enst_seqs, existing_ensts)
 
     # Summary so far
-    total_enst      = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE}").fetchone()[0]
-    dup_uniprot     = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE duplicate_isoform_id IS NOT NULL").fetchone()[0]
-    dup_enst        = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE duplicate_enst_id IS NOT NULL").fetchone()[0]
-    dup_count       = dup_uniprot + dup_enst
-    frag_count      = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE is_fragment=1 AND duplicate_isoform_id IS NULL AND duplicate_enst_id IS NULL").fetchone()[0]
-    novel_count     = total_enst - dup_count
+    total_enst  = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE}").fetchone()[0]
+    dup_uniprot = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE duplicate_isoform_id IS NOT NULL").fetchone()[0]
+    dup_enst    = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE duplicate_enst_id IS NOT NULL").fetchone()[0]
+    dup_count   = dup_uniprot + dup_enst
+    frag_count  = conn.execute(f"SELECT COUNT(*) FROM {_TRANSCRIPT_TABLE} WHERE is_fragment=1 AND duplicate_isoform_id IS NULL AND duplicate_enst_id IS NULL").fetchone()[0]
+    novel_count = total_enst - dup_count
 
     print(f"\n{'='*60}")
     print(f"  Ensembl transcript collection")
@@ -346,12 +421,6 @@ def main() -> None:
     print(f"  Duplicates — internal Ensembl   : {dup_enst}")
     print(f"  Fragments (< {_MIN_SEQ_LEN} aa, novel)    : {frag_count}")
     print(f"  Novel unique transcripts        : {novel_count}")
-
-    if args.skip_analysis:
-        print(f"\n  --skip-analysis: alignment step skipped")
-        print(f"{'='*60}")
-        conn.close()
-        return
 
     # Step 4: alignment analysis
     print(f"\n  Running alignment analysis...")
@@ -366,8 +435,27 @@ def main() -> None:
     print(f"  Skipped (< 12.5%% identity)   : {skipped_ab}")
     print(f"{'='*60}")
 
+    # Merge A: backfill exon boundary data for Ensembl transcripts
+    logger.info("=== Backfilling exon boundary data for Ensembl transcripts ===")
+    conn.row_factory = None
+    _ensure_exon_columns(conn)
+
+    logger.info("=== Phase 1: fetching exon annotations ===")
+    updated = _backfill_exon_annotations(conn)
+    print(f"\n  Exon annotations written: {updated}")
+
+    logger.info("=== Phase 2: flagging exon boundaries in domain ===")
+    flagged, total_eval = _flag_exon_boundary_in_domain(conn)
+
+    total_aff = conn.execute(f"SELECT COUNT(*) FROM {_BACKFILL_AFFECTED_TABLE}").fetchone()[0]
+    print(f"\n{'='*60}")
+    print(f"  Exon boundary analysis — TIM barrel (Homo sapiens)")
+    print(f"{'='*60}")
+    print(f"  AS-affected transcripts (total)          : {total_aff}")
+    print(f"  Evaluated (exon data available)          : {total_eval}")
+    print(f"  Exon boundary falls inside domain        : {flagged}")
+    if total_eval > 0:
+        print(f"  Fraction with intra-domain junction      : {flagged/total_eval:.1%}")
+    print(f"{'='*60}")
+
     conn.close()
-
-
-if __name__ == "__main__":
-    main()

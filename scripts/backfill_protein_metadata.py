@@ -19,7 +19,6 @@ Usage
     python scripts/backfill_protein_metadata.py --all        # re-fetch even filled rows
 """
 
-import argparse
 import logging
 import sqlite3
 import sys
@@ -28,7 +27,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.api.uniprot_client import UniProtClient
-from protein_data_collector.config import get_config
 from protein_data_collector.database.storage import deduplicate_proteins
 
 logging.basicConfig(
@@ -72,21 +70,11 @@ def fetch_and_update(conn: sqlite3.Connection, refetch_all: bool = False) -> int
     return filled
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Backfill protein metadata and re-deduplicate")
-    parser.add_argument("--db",       default=None)
-    parser.add_argument("--no-dedup", action="store_true", help="Skip deduplication step")
-    parser.add_argument("--all",      action="store_true", help="Re-fetch even already-filled rows")
-    parser.add_argument("--log-level", default="INFO")
-    args = parser.parse_args()
-
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
-
-    db_path = args.db or get_config().db_path
+def run(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
 
     logger.info("=== Step 1: fetch protein metadata from UniProt ===")
-    filled = fetch_and_update(conn, refetch_all=args.all)
+    fetch_and_update(conn, refetch_all=False)
 
     total  = conn.execute("SELECT COUNT(*) FROM proteins").fetchone()[0]
     filled_now = conn.execute(
@@ -98,25 +86,20 @@ def main() -> None:
     print(f"\n  protein_name filled : {filled_now} / {total}")
     print(f"  reviewed (Swiss-Prot): {reviewed_now} / {total}")
 
-    if not args.no_dedup:
-        logger.info("=== Step 2: deduplicate proteins ===")
-        before = conn.execute(
-            "SELECT COUNT(*) FROM proteins WHERE canonical_uniprot_id IS NULL"
-        ).fetchone()[0]
-        deduplicate_proteins(conn)
-        after = conn.execute(
-            "SELECT COUNT(*) FROM proteins WHERE canonical_uniprot_id IS NULL"
-        ).fetchone()[0]
-        redundant = conn.execute(
-            "SELECT COUNT(*) FROM proteins WHERE canonical_uniprot_id IS NOT NULL"
-        ).fetchone()[0]
-        print(f"\n  Canonical proteins before dedup : {before}")
-        print(f"  Canonical proteins after dedup  : {after}")
-        print(f"  Marked redundant                : {redundant}")
+    logger.info("=== Step 2: deduplicate proteins ===")
+    before = conn.execute(
+        "SELECT COUNT(*) FROM proteins WHERE canonical_uniprot_id IS NULL"
+    ).fetchone()[0]
+    deduplicate_proteins(conn)
+    after = conn.execute(
+        "SELECT COUNT(*) FROM proteins WHERE canonical_uniprot_id IS NULL"
+    ).fetchone()[0]
+    redundant = conn.execute(
+        "SELECT COUNT(*) FROM proteins WHERE canonical_uniprot_id IS NOT NULL"
+    ).fetchone()[0]
+    print(f"\n  Canonical proteins before dedup : {before}")
+    print(f"  Canonical proteins after dedup  : {after}")
+    print(f"  Marked redundant                : {redundant}")
 
     conn.close()
     print("\nDone.")
-
-
-if __name__ == "__main__":
-    main()

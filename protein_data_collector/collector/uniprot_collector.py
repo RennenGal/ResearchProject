@@ -137,7 +137,7 @@ class UniProtCollector:
 
     def _get_tim_barrel_location(
         self, uniprot_id: str, tim_barrel_accession: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[List[Dict[str, Any]]]:
         try:
             return self.interpro.get_domain_boundaries(uniprot_id, tim_barrel_accession)
         except Exception as e:

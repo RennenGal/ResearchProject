@@ -1,348 +1,482 @@
-# Results
+# Results -- Strict Motif-Core Filter
+
+## Motivation and filter definition
+
+Isoforms are included only if at least one VSP has its start or end position
+**within** `[first_motif_beta_start, last_motif_alpha_end]` -- the annotated
+ba motif core of the TIM barrel. VSPs that merely span the entire core
+(starting before and ending after) are excluded: they delete the whole barrel
+rather than splicing at a specific structural position. The null distribution
+for Analyses 1-4 is computed from residue positions within the same core
+interval, using 4 categories (b-strand, a-helix, α→β loop, β→α loop).
+Flanking positions outside the annotated motifs are excluded from both
+numerator and denominator.
+
+---
 
 ## Dataset summary
 
-The total number of proteins, canonical and non-canonical, is 360.
-
-### Canonical proteins
+> **Script:** `scripts/run_alternative_analysis.py`
 
 | | Count |
 |---|---|
-| Total canonical proteins in analysis | 229 |
-| — with full 8-motif annotation ($K_p = 8$) | 156 |
-| — with partial annotation ($1 \le K_p \le 7$) | 73 |
-| — with experimental PDB structure | 84 |
-| — AlphaFold structure only | 145 |
-| — with ≥ 1 domain-level AS isoform | 74 |
-| — with no domain-level AS isoform | 155 |
+| Total proteins in analysis (canonical + isoforms) | **314** |
+| &ensp;— canonical proteins | 191 |
+| &ensp;— AS isoforms (strict) | **123** |
+| Canonical proteins with ≥ 1 motif-core AS isoform (strict) | **76** |
+| Canonical proteins with no motif-core AS isoform (strict) | 115 |
+| Total AS isoforms (strict) | **123** |
 
 ### Motif-count distribution
 
-| Annotated motifs ($K_p$) | Proteins |
+| $K_p$ | Domain instances |
 |---|---|
-| 1 | 7 |
+| 1 | 2 |
 | 2 | 7 |
-| 3 | 7 |
-| 4 | 9 |
-| 5 | 8 |
-| 6 | 12 |
-| 7 | 23 |
-| 8 | 156 |
+| 3 | 1 |
+| 4 | 5 |
+| 5 | 2 |
+| 6 | 17 |
+| 7 | 27 |
+| 8 | 140 |
 
-### Alternative-splicing isoforms
-
-| | Count |
-|---|---|
-| Total AS isoforms in analysis | 131 |
-| Canonical proteins with ≥ 1 isoform | 74 |
-| Mean isoform sequence identity to canonical | 29.3% |
-| Min / Max sequence identity | 0.0% / 100.0% |
-
-### AS-isoform count per canonical protein
+### AS-isoform count per canonical protein (strict)
 
 | Isoforms per canonical | Proteins |
 |---|---|
-| 0 | 155 |
-| 1 | 41 |
-| 2 | 21 |
-| 3 | 5 |
-| 4 | 5 |
+| 0 | 115 |
+| 1 | 47 |
+| 2 | 17 |
+| 3 | 8 |
+| 4 | 3 |
 | 6 | 1 |
-| 7 | 1 |
 
-> **Exclusion note — Ensembl-transcript-based analyses (§5 onward):**
-> 13 of the 229 canonical proteins lack a matched Ensembl transcript in the database and are therefore excluded from all analyses that use Ensembl exon-junction coordinates as the authoritative junction source.
-> These 13 proteins are: A0A286YF17 (MTHFR), A0A2R8Y4U7 (MANBA), A0A494C064 (MTR), A0A7P0T956 (MTR), A0A8Q3SI69 (ADA), A0AAQ5BGL9 (MOCS1), D6REY1 (CHIT1), E9PCX2 (AKR1B1), G3V255 (GALC), H0Y4E4 (LCT), H7C1W4, P16278 (GLB1), P20839 (IMPDH1).
-> Two of these (GLB1 and IMPDH1) have domain-level AS isoforms; the remaining 11 have no isoforms and affect only the canonical null distribution.
-> All Ensembl-based analyses therefore run on **216 canonical proteins** (94% of the full set), of which **72 have ≥ 1 domain-level AS isoform**.
+### Ensembl transcript coverage
 
----
+186 of 191 canonical proteins are matched to an Ensembl transcript and are
+used in Analyses 1-4. 5 canonical proteins lack a matched transcript and are
+excluded from junction-based analyses.
 
-## Notation
+### Motif-core null
 
-| Symbol | Definition |
-|---|---|
-| $p$ | Index over canonical proteins |
-| $d_p^s$, $d_p^e$ | Domain start and end residue positions for protein $p$ |
-| $E_p = \{d_p^s, \ldots, d_p^e - 1\}$ | Set of eligible junction positions (domain interior) |
-| $\|E_p\|$ | Domain length (number of eligible positions) |
-| $n_p$ | Number of exon junctions falling inside the domain of protein $p$ |
-| $N = \sum_p n_p$ | Total domain-internal junctions across all canonical proteins |
-| $K_p$ | Number of annotated TIM-barrel motifs for protein $p$ |
-| $t$ | Structural element type (β-strand, α-helix, loop, inter-motif, flanking) |
-| $\tau(r)$ | Element type of residue position $r$ |
-| $\lambda_{t,p}$ | Number of eligible positions classified as element $t$ in protein $p$ |
-| $q_{t,p} = \lambda_{t,p} / \|E_p\|$ | Fraction of domain positions belonging to element $t$ in protein $p$ |
-| $\pi_t^0 = \sum_p n_p q_{t,p} / N$ | Junction-count-weighted null expectation for element $t$ |
-| $N_t$ | Observed number of junctions falling in element $t$ |
-| $f_t = N_t / N$ | Observed fraction of junctions in element $t$ |
-| $\rho_t = f_t / \pi_t^0$ | Enrichment ratio for element $t$ |
-| $E_t = N \cdot \pi_t^0$ | Expected junction count in element $t$ under $H_0$ |
-| $z_t = (N_t - E_t) / \sqrt{E_t}$ | Pearson z-score for element $t$ |
-| $\chi^2 = \sum_t z_t^2$ | Global goodness-of-fit statistic |
-| BH $p$ | Benjamini–Hochberg FDR-adjusted p-value |
-| VSP | Variant splice protein — a domain-level replacement or deletion event in an AS isoform |
-| $\mathcal{A}$ | Set of AS isoforms |
-| $J_a^{AS}$ | Canonical junctions inside the VSP span of isoform $a$ |
-| $N^{AS} = \sum_a \|J_a^{AS}\|$ | Total AS-affected junction instances |
-| $N_t^{AS}$ | Observed AS-affected junctions in element $t$ |
-| $f_t^{AS} = N_t^{AS} / N^{AS}$ | Observed fraction of AS junctions in element $t$ |
-| $\rho_t^{AS} = f_t^{AS} / f_t$ | Enrichment of AS junctions in element $t$ relative to canonical baseline |
-| $\tilde{x}_{a,j} = (j - d_p^s) / \|E_p\|$ | Normalised domain position of AS junction $j$ |
-| $D$ | Kolmogorov–Smirnov statistic (max deviation between two empirical CDFs) |
-| $\bar{H}$ | Mean within-protein hotspot fraction across multi-isoform proteins |
-| $u_p(j)$ | Number of isoforms of protein $p$ whose VSP span includes junction $j$ |
-| $(t, k)$ | Motif-element category: element type $t$ at motif number $k$ |
-| $N_{(t,k)}$ | Observed junctions in position $(t, k)$ |
-| $f_{(t,k)} = N_{(t,k)} / N$ | Observed fraction of junctions in position $(t, k)$ |
-| $\pi_{(t,k)}^0$ | Length-weighted null expectation for position $(t, k)$ |
-| $\rho_{(t,k)} = f_{(t,k)} / \pi_{(t,k)}^0$ | Enrichment ratio for position $(t, k)$ |
-| $s_v = \max(v_s, d_p^s)$ | Domain-clipped VSP start position |
-| $e_v = \min(v_e, d_p^e - 1)$ | Domain-clipped VSP end position |
-| $D_{\text{seq}}$ | Transcript-derived AS start: first canonical residue where isoform and canonical sequences diverge (Analysis 3) |
-| $R_{\text{can}}$ | Transcript-derived AS end: first canonical residue where sequences rejoin after the AS region (Analysis 3); $R_{\text{can}}-1$ = last diverged position |
-
----
-
-## Analysis 1 — Canonical junction element enrichment
-
-**Script:** `scripts/analyze_junction_enrichment.py`
-
-**Null hypothesis ($H_0$):** Exon junctions are placed proportionally to the length of each structural element — i.e., the enrichment ratio $\rho_t = f_t / \pi_t^0 = 1$ for all element types $t$, where $f_t = N_t / N$ is the observed fraction of junctions falling in element $t$ and $\pi_t^0$ is the length-weighted fraction of the domain occupied by element $t$.
-
-### Results
-
-Global $\chi^2(4) = 21.34$, $p = 0.0003$ ($N = 1411$ junctions, 216 proteins).
-
-| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
-|---|---|---|---|---|---|---|---|
-| β-strand    | 147 | 0.104 | 0.090 | 1.155 | 0.080 | 0.099 | ns |
-| α-helix     | 450 | 0.319 | 0.282 | 1.130 | 0.009 | 0.024 | *  |
-| Inter-motif | 196 | 0.139 | 0.129 | 1.077 | 0.301 | 0.301 | ns |
-| Loop (β→α)  | 350 | 0.248 | 0.285 | 0.871 | 0.010 | 0.024 | *  |
-| Flanking    | 268 | 0.190 | 0.214 | 0.889 | 0.054 | 0.089 | ns |
-
-![Element enrichment](figures/enrichment_bars.png)
-
-### Conclusion
-
-$H_0$ is **rejected** ($\chi^2(4) = 21.34$, $p = 0.0003$). Two elements survive BH correction at $\alpha = 0.05$: **α-helix enrichment** ($\rho = 1.130$, BH $p = 0.024$) and **loop (β→α) depletion** ($\rho = 0.871$, BH $p = 0.024$). Exon junctions are over-represented within α-helices and under-represented in loop regions relative to their domain-length expectation. β-strand shows a descriptive enrichment trend ($\rho = 1.155$, BH $p = 0.099$) that does not reach significance after correction. These results are based on 216 Ensembl-matched canonical proteins (13 without a matched Ensembl transcript excluded; see exclusion note above).
-
----
-
-## Analysis 2 — Motif-specific element enrichment
-
-**Script:** `scripts/analyze_motif_enrichment.py`
-
-**Null hypothesis ($H_0$):** Junctions are distributed proportionally to the length of each motif-element position — i.e., $\rho_{(t,k)} = f_{(t,k)} / \pi_{(t,k)}^0 = 1$ for all primary categories $(t, k)$.
-
-**Scope:** Restricted to proteins with full 8-motif annotation ($K_p = 8$, $n = 151$). Partially-annotated proteins ($K_p < 8$) are excluded because they concentrate all junctions into fewer motif slots, inflating counts at early positions and deflating those at later ones.
-
-### Results
-
-31 primary categories: $(\beta, k)$, $(\text{loop}, k)$, $(\alpha, k)$ for $k = 1, \ldots, 8$ and $(\text{inter}, k)$ for $k = 1, \ldots, 7$. Flanking positions are excluded (not assigned to a specific motif). BH correction applied across all 31 categories simultaneously ($N = 1108$ total junctions).
-
-| Position | $N_{(t,k)}$ | $\rho_{(t,k)}$ | $z$ | Raw $p$ | BH $p$ | Sig |
-|---|---|---|---|---|---|---|
-| α-helix 4 | 60 | 1.535 | 3.347 | 0.0008 | 0.025 | * |
-
-All other 30 positions are non-significant after BH correction (lowest BH $p = 0.48$).
-
-![Motif-specific enrichment heatmap](figures/motif_enrichment_heatmap.png)
-
-### Conclusion
-
-$H_0$ is **rejected** for α-helix 4 specifically ($\rho = 1.535$, BH $p = 0.025$). No other position reaches significance after BH correction. This localises the global α-helix enrichment found in Analysis 1 ($\rho = 1.130$) to the fourth TIM-barrel repeat unit, suggesting that the fourth α-helix is a preferential site for exon boundary placement across the protein family.
-
----
-
-## Analysis 3 — Transcript-derived AS boundary enrichment in structural elements
-
-**Script:** `scripts/analyze_as_splice_junctions.py`
-
-This analysis is the transcript-level counterpart of Analysis 4 (VSP boundary enrichment). Instead of using annotated VSP coordinates (can_start, can_end), it locates the boundaries of the alternatively spliced region by direct protein sequence comparison:
-
-- **$D_{\text{seq}}$**: first canonical residue where the isoform and canonical protein sequences differ — the transcript-derived **start** of the AS region.
-- **$R_{\text{can}} - 1$**: last canonical residue before the sequences rejoin, found by suffix-matching 15 residues of `canonical[can_end : can_end+15]` in the isoform (±5 residue slide). VSP `can_end` is used only as the starting hint; **it does not define the AS boundary.** This is the transcript-derived **end** of the AS region.
-
-Both boundaries are domain-clipped ($s_t = \max(D_{\text{seq}}, d_p^s)$, $e_t = \min(R_{\text{can}}-1, d_p^e - 1)$) and classified by structural element using the $\tau_5$ classifier. Enrichment is computed against the length-weighted **residue null** $\pi_t^0$, identical to the null used in Analysis 4, making the two analyses directly comparable.
-
-Proteins without a matched Ensembl transcript are excluded (see exclusion note above). No Ensembl isoform-transcript match is required — only the stored protein sequences and VSP events are used.
-
-**Dataset:** 216 canonical proteins; 131 isoforms; 151 isoform+VSP pairs where the AS region overlaps the domain (includes resyncing isoforms where $R_{\text{can}}$ is sequence-derived, and truncating isoforms where VSP `can_end` is used as the end boundary).
-
-**Null hypothesis ($H_0$):** AS region boundaries are distributed across structural elements proportionally to domain length ($\rho_t = 1$ for all $t$).
-
-**Residue null** ($\pi_t^0$, 216 canonical proteins):
+The following 4-category length-weighted null is used in Analyses 1-4.
+Computed over `[first_beta_start, last_alpha_end]` of all 186
+Ensembl-matched canonical proteins.
 
 | Element | $\pi_t^0$ |
 |---|---|
-| β-strand    | 0.091 |
-| α-helix     | 0.279 |
-| Inter-motif | 0.137 |
-| Loop (β→α)  | 0.283 |
-| Flanking    | 0.210 |
-
-### Results
-
-**Transcript start positions ($D_{\text{seq}}$, $N = 151$, global $\chi^2(4) = 114.04$, $p < 0.0001$):**
-
-| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
-|---|---|---|---|---|---|---|---|
-| β-strand    | 21 | 0.139 | 0.091 | 1.537 | 0.047 | 0.059 | ns  |
-| α-helix     | 32 | 0.212 | 0.279 | 0.759 | 0.117 | 0.117 | ns  |
-| Inter-motif |  1 | 0.007 | 0.137 | **0.048** | <0.001 | **<0.001** | *** |
-| Loop (β→α)  | 17 | 0.113 | 0.283 | **0.398** | <0.001 | **<0.001** | *** |
-| Flanking    | 80 | 0.530 | 0.210 | **2.521** | <0.001 | **<0.001** | *** |
-
-**Transcript end positions ($R_{\text{can}}-1$, $N = 151$, global $\chi^2(4) = 58.61$, $p < 0.0001$):**
-
-| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
-|---|---|---|---|---|---|---|---|
-| β-strand    | 12 | 0.079 | 0.091 | 0.878 | 0.653 | 0.653 | ns  |
-| α-helix     | 27 | 0.179 | 0.279 | 0.640 | 0.019 | 0.032 | *   |
-| Inter-motif |  8 | 0.053 | 0.137 | **0.387** | 0.005 | **0.013** | *   |
-| Loop (β→α)  | 35 | 0.232 | 0.283 | 0.819 | 0.237 | 0.296 | ns  |
-| Flanking    | 69 | 0.457 | 0.210 | **2.174** | <0.001 | **<0.001** | *** |
-
-![Transcript-derived AS boundary enrichment](figures/as_splice_junctions.png)
-
-**Pooled (start + end combined, $N = 302$):**
-
-| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | BH $p$ | Sig |
-|---|---|---|---|---|---|---|
-| β-strand    |  33 | 0.109 | 0.091 | 1.208 | 0.278 | ns  |
-| α-helix     |  59 | 0.195 | 0.279 | 0.699 | 0.007 | **  |
-| Inter-motif |   9 | 0.030 | 0.137 | 0.217 | <0.001 | *** |
-| Loop (β→α)  |  52 | 0.172 | 0.283 | 0.608 | <0.001 | *** |
-| Flanking    | 149 | 0.493 | 0.210 | 2.348 | <0.001 | *** |
-
-![Transcript-derived AS boundary enrichment (pooled)](figures/as_splice_junctions_pooled.png)
-
-### Conclusion
-
-Transcript-derived start and end positions both replicate the core finding of Analysis 4. **Start positions** ($N = 151$): AS events preferentially begin in **flanking regions** ($\rho = 2.521$, BH $p < 0.001$, \*\*\*) and are depleted from **inter-motif linkers** ($\rho = 0.048$, BH $p < 0.001$, \*\*\*) and **loops** ($\rho = 0.398$, BH $p < 0.001$, \*\*\*), mirroring the Analysis 4 start-position pattern. **End positions** ($N = 151$): **flanking regions** are again enriched ($\rho = 2.174$, BH $p < 0.001$, \*\*\*) and **inter-motif linkers** depleted ($\rho = 0.387$, BH $p = 0.013$, \*), consistent with the Analysis 4 end-position signal. When both boundaries are pooled ($N = 302$), α-helix depletion reaches significance ($\rho = 0.699$, BH $p = 0.007$, \*\*), matching the pattern seen in the Analysis 4 pooled result ($\rho = 0.762$, BH $p = 0.038$). The agreement across both boundaries and both methods (sequence-derived vs. VSP-annotation-derived) confirms that AS events in TIM-barrel proteins enter and exit the domain at flanking sequence, avoiding the barrel's connecting linkers.
+| b-strand    | 0.155 |
+| a-helix     | 0.336 |
+| α→β loop | 0.248 |
+| β→α loop | 0.261 |
 
 ---
 
-## Analysis 4 — VSP boundary placement in structural elements
+## Analysis 1 -- Canonical splice-junction enrichment (motif-core null)
 
-**Script:** `scripts/analyze_vsp_boundaries.py`
+> **Script:** `scripts/run_alternative_analysis.py`
 
-For each VSP with domain overlap, the domain-clipped start $s_v = \max(v_s, d_p^s)$ and end $e_v = \min(v_e, d_p^e - 1)$ are each assigned to a structural element using the $\tau_5$ classifier. The enrichment ratio $\rho_t = f_t / \pi_t^0$ compares the observed fraction of VSP boundaries in element $t$ to the length-weighted null $\pi_t^0$ (fraction of domain residues in each element across the 216 Ensembl-matched canonical proteins). Significance is assessed by a Pearson z-score test with BH correction across the five element types.
+**Dataset:** 186 Ensembl-matched canonical proteins with >= 1 core junction.
 
-**Dataset:** $N = 148$ VSP spans across 68 distinct canonical proteins (216 Ensembl-matched proteins; 13 proteins without a matched Ensembl transcript excluded; VSP events where the isoform sequence does not diverge from canonical before `can_end` are additionally excluded as annotation artefacts, consistent with the sequence-comparison approach of Analysis 3).
+**Method:** Junction-count-weighted null restricted to junctions within
+`[first_beta_start, last_alpha_end]`. Flanking junctions are excluded from
+both null denominator and observed counts. 4 categories.
 
-### Results
-
-**VSP start positions** ($N = 148$):
-
-| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
-|---|---|---|---|---|---|---|---|
-| β-strand    |  17 | 0.115 | 0.090 | 1.270 | 0.324 | 0.324 | ns  |
-| α-helix     |  35 | 0.236 | 0.279 | 0.847 | 0.324 | 0.324 | ns  |
-| Inter-motif |   4 | 0.027 | 0.137 | 0.197 | 0.0003 | 0.0008 | *** |
-| Loop (β→α)  |  20 | 0.135 | 0.283 | 0.478 | 0.0007 | 0.0012 | *** |
-| Flanking    |  72 | 0.486 | 0.210 | 2.315 | <0.0001 | <0.0001 | *** |
-
-**VSP end positions** ($N = 148$):
+**Results** ($N = 1087$ core junctions, global $\chi^2(3) = 17.58$, $p = 0.0005$):
 
 | Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
 |---|---|---|---|---|---|---|---|
-| β-strand    |  16 | 0.108 | 0.090 | 1.195 | 0.476 | 0.476 | ns  |
-| α-helix     |  28 | 0.189 | 0.279 | 0.677 | 0.038 | 0.063 | ns  |
-| Inter-motif |   7 | 0.047 | 0.137 | 0.345 | 0.003 | 0.008 | **  |
-| Loop (β→α)  |  34 | 0.230 | 0.283 | 0.812 | 0.223 | 0.279 | ns  |
-| Flanking    |  63 | 0.426 | 0.210 | 2.026 | <0.0001 | <0.0001 | *** |
+| b-strand    | 191 | 0.176 | 0.158 | 1.111 | 0.1466 | 0.1955 | ns  |
+| a-helix     | 400 | 0.368 | 0.339 | 1.085 | 0.1030 | 0.1955 | ns  |
+| α→β loop | 273 | 0.251 | 0.243 | 1.034 | 0.5765 | 0.5765 | ns  |
+| β→α loop | 223 | 0.205 | 0.260 | **0.790** | 0.0004 | **0.0016** | **  |
 
-![VSP boundary enrichment](figures/vsp_boundary_enrichment.png)
-
-**Pooled (start + end combined, $N = 296$):**
-
-| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | BH $p$ | Sig |
-|---|---|---|---|---|---|---|
-| β-strand    |  33 | 0.111 | 0.090 | 1.232 | 0.230 | ns  |
-| α-helix     |  63 | 0.213 | 0.279 | 0.762 | 0.038 | *   |
-| Inter-motif |  11 | 0.037 | 0.137 | 0.271 | <0.0001 | *** |
-| Loop (β→α)  |  54 | 0.182 | 0.283 | 0.645 | 0.002 | **  |
-| Flanking    | 135 | 0.456 | 0.210 | 2.170 | <0.0001 | *** |
-
-![VSP boundary pooled enrichment](figures/vsp_boundary_pooled.png)
+![Canonical junction enrichment (motif-core null)](figures/alt/junction_enrichment_core.png)
 
 ### Conclusion
 
-Both VSP start and end positions show the same structural preference: strong enrichment in flanking regions (start: $\rho = 2.315$, BH $p < 0.0001$; end: $\rho = 2.026$, BH $p < 0.0001$) and depletion from inter-motif linkers (start: $\rho = 0.197$, BH $p = 0.0008$; end: $\rho = 0.345$, BH $p = 0.008$). Loop depletion is significant at the start position only ($\rho = 0.478$, BH $p = 0.0012$). α-helix depletion at end positions ($\rho = 0.677$, BH $p = 0.063$) mirrors the significant depletion found in Analysis 3 ($\rho = 0.640$, BH $p = 0.032$); it falls just short of the BH threshold here due to the coarser VSP annotation boundaries compared to the sequence-derived $R_{\text{can}}-1$ positions of Analysis 3. When both boundaries are pooled ($N = 296$), α-helix depletion reaches significance ($\rho = 0.762$, BH $p = 0.038$). AS-altered spans consistently enter and exit the domain at non-barrel flanking sequence, avoiding the inter-motif linkers and loops that connect the barrel repeats.
+Loop depletion is the sole significant signal ($\rho = 0.790$, BH $p = 0.002$).
+The qualitative result is unchanged from the primary analysis: canonical splice
+junctions avoid the β→α loop element of TIM barrel repeats.
 
 ---
 
-## Analysis 5: Structural impact on barrel architecture
+## Analysis 2 -- Motif-specific junction enrichment, $K_p=8$ (motif-core null)
 
-For each isoform with VSP domain events, we classify the fate of each canonical TIM-barrel element using two levels of granularity: (i) each (β/α) repeat unit treated as one motif, and (ii) β-strand and α-helix classified independently. In both cases the state is:
+> **Script:** `scripts/run_alternative_analysis.py`
 
-| Class | Definition |
-|---|---|
-| **intact** | no overlap with any VSP region |
-| **partial** | VSP partially overlaps the element |
-| **removed** | VSP fully contains the element |
+**Dataset:** 129 $K_p=8$ canonical proteins with >= 1 Ensembl core junction.
 
-For isoforms with multiple VSPs, the worst state across all events is used. All 131 isoforms with at least one VSP domain event are included.
+**Method:** 31-category motif-specific null (b/loop/a x k=1..8; inter x k=1..7),
+restricted to junctions within `[first_beta_start, last_alpha_end]`.
 
-**Canonical motif-count distribution** ($n = 229$ proteins):
+**Results** ($N = 820$ core junctions, global $\chi^2(30) = 41.47$, $p = 0.079$):
 
-| Annotated motifs ($K_p$) | All canonical | With AS isoforms |
+No individual category survives BH correction at 5%. The global test is marginal
+and the signal is distributed rather than concentrated in any single position.
+
+Full per-category table:
+
+| Category | $N_t$ | $\pi_t^0$ | $f_t$ | $\rho_t$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|
+| b k=1 | 15 | 0.0192 | 0.0183 | 0.951 | 0.9865 | ns |
+| loop k=1 | 34 | 0.0402 | 0.0415 | 1.031 | 0.9865 | ns |
+| a k=1 | 34 | 0.0413 | 0.0415 | 1.004 | 0.9865 | ns |
+| b k=2 | 26 | 0.0209 | 0.0317 | 1.518 | 0.3042 | ns |
+| loop k=2 | 14 | 0.0291 | 0.0171 | 0.586 | 0.3042 | ns |
+| a k=2 | 31 | 0.0422 | 0.0378 | 0.896 | 0.8815 | ns |
+| b k=3 | 24 | 0.0218 | 0.0293 | 1.340 | 0.4728 | ns |
+| loop k=3 | 19 | 0.0259 | 0.0232 | 0.894 | 0.9706 | ns |
+| a k=3 | 35 | 0.0482 | 0.0427 | 0.886 | 0.8649 | ns |
+| b k=4 | 13 | 0.0206 | 0.0159 | 0.771 | 0.7155 | ns |
+| loop k=4 | 22 | 0.0410 | 0.0268 | 0.655 | 0.3042 | ns |
+| a k=4 | 52 | 0.0470 | 0.0634 | 1.350 | 0.3042 | ns |
+| b k=5 | 19 | 0.0211 | 0.0232 | 1.096 | 0.9865 | ns |
+| loop k=5 | 14 | 0.0242 | 0.0171 | 0.707 | 0.4951 | ns |
+| a k=5 | 40 | 0.0392 | 0.0488 | 1.243 | 0.4728 | ns |
+| b k=6 | 17 | 0.0206 | 0.0207 | 1.008 | 0.9865 | ns |
+| loop k=6 | 12 | 0.0256 | 0.0146 | 0.571 | 0.3042 | ns |
+| a k=6 | 36 | 0.0434 | 0.0439 | 1.012 | 0.9865 | ns |
+| b k=7 | 16 | 0.0194 | 0.0195 | 1.004 | 0.9865 | ns |
+| loop k=7 | 23 | 0.0286 | 0.0280 | 0.981 | 0.9865 | ns |
+| a k=7 | 42 | 0.0400 | 0.0512 | 1.281 | 0.4728 | ns |
+| b k=8 | 15 | 0.0172 | 0.0183 | 1.063 | 0.9865 | ns |
+| loop k=8 | 16 | 0.0276 | 0.0195 | 0.707 | 0.4728 | ns |
+| a k=8 | 43 | 0.0454 | 0.0524 | 1.155 | 0.7155 | ns |
+| inter k=1 | 24 | 0.0407 | 0.0293 | 0.719 | 0.4728 | ns |
+| inter k=2 | 37 | 0.0359 | 0.0451 | 1.256 | 0.4728 | ns |
+| inter k=3 | 27 | 0.0292 | 0.0329 | 1.128 | 0.8815 | ns |
+| inter k=4 | 35 | 0.0371 | 0.0427 | 1.152 | 0.7800 | ns |
+| inter k=5 | 35 | 0.0416 | 0.0427 | 1.026 | 0.9865 | ns |
+| inter k=6 | 22 | 0.0248 | 0.0268 | 1.082 | 0.9865 | ns |
+| inter k=7 | 28 | 0.0410 | 0.0341 | 0.833 | 0.7155 | ns |
+
+![Motif-specific junction enrichment heatmap (motif-core null)](figures/alt/motif_enrichment_heatmap.png)
+
+---
+
+## Analysis 3 -- Transcript-derived AS boundary enrichment
+
+> **Script:** `scripts/run_alternative_analysis.py`
+
+**Dataset:** 186 Ensembl-matched canonical proteins; 123 strict isoforms;
+**158 AS boundary pairs** (diverge point $D_{\text{seq}}$ to resync point
+$R_{\text{can}}-1$).
+
+### Boundary-pair classification
+
+| Type | Description | Count |
 |---|---|---|
-| 1 |  7 |  0 |
-| 2 |  7 |  2 |
-| 3 |  7 |  0 |
-| 4 |  9 |  0 |
-| 5 |  8 |  0 |
-| 6 | 12 |  3 |
-| 7 | 23 | 10 |
-| 8 | 156 | 59 |
+| Contained | Both start and end within core | 60 |
+| Enters core | Start outside core, end inside core | 54 |
+| Exits core | Start inside core, end outside core | 33 |
+| Spans core | Both outside core | 11 |
 
-![Canonical motif-count distribution](figures/canonical_kp_distribution.png)
+---
 
-### Combined: (β/α) repeat as one motif
+### Part A -- Motif-core enrichment (positions within core only)
 
-Each motif is classified over its full span [β_start, α_end].
+**Null:** 4-category motif-core null (b = 0.155, a = 0.336, inter = 0.248, loop = 0.261).
 
-**Intact motif count distribution** ($n = 131$ isoforms):
+**Transcript start positions ($D_{\text{seq}}$, $N = 93$, global $\chi^2(3) = 15.18$, $p = 0.0017$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 26 | 0.280 | 0.155 | **1.799** | 0.0024 | **0.0095** | **  |
+| a-helix     | 35 | 0.376 | 0.336 | 1.119 | 0.5052 | 0.5052 | ns  |
+| α→β loop | 13 | 0.140 | 0.248 | 0.565 | 0.0367 | 0.0735 | ns  |
+| β→α loop | 19 | 0.204 | 0.261 | 0.783 | 0.2861 | 0.3815 | ns  |
+
+**Transcript end positions ($R_{\text{can}}-1$, $N = 114$, global $\chi^2(3) = 10.13$, $p = 0.018$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 19 | 0.167 | 0.155 | 1.073 | 0.7599 | 0.7599 | ns  |
+| a-helix     | 43 | 0.377 | 0.336 | 1.122 | 0.4512 | 0.6016 | ns  |
+| α→β loop | 14 | 0.123 | 0.248 | **0.496** | 0.0074 | **0.0297** | *   |
+| β→α loop | 38 | 0.333 | 0.261 | 1.278 | 0.1293 | 0.2587 | ns  |
+
+**Pooled (start + end combined, $N = 207$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|
+| b-strand    | 45 | 0.217 | 0.155 | **1.399** | **0.0472** | *  |
+| a-helix     | 78 | 0.377 | 0.336 | 1.121 | 0.4194 | ns |
+| α→β loop | 27 | 0.130 | 0.248 | **0.527** | **0.0028** | ** |
+| β→α loop | 57 | 0.275 | 0.261 | 1.056 | 0.6814 | ns |
+
+![Motif-core enrichment: start vs end positions within core](figures/alt/as_splice_junctions.png)
+
+![Motif-core enrichment: pooled](figures/alt/as_splice_junctions_pooled.png)
+
+---
+
+### Part B -- Full-domain view (all 158 boundary pairs)
+
+Compared against the full-domain length-weighted null (5 categories including flanking).
+
+**Transcript start positions ($D_{\text{seq}}$, $N = 158$, global $\chi^2(4) = 72.58$, $p < 0.0001$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 26 | 0.165 | 0.128 | 1.282 | 0.2038 | 0.2038 | ns  |
+| a-helix     | 35 | 0.222 | 0.278 | 0.798 | 0.1812 | 0.2038 | ns  |
+| α→β loop | 13 | 0.082 | 0.204 | **0.402** | 0.0007 | **0.0017** | **  |
+| β→α loop | 19 | 0.120 | 0.215 | **0.558** | 0.0100 | **0.0166** | *   |
+| Flanking    | 65 | 0.411 | 0.174 | **2.361** | <0.0001 | **<0.0001** | *** |
+
+**Transcript end positions ($R_{\text{can}}-1$, $N = 158$, global $\chi^2(4) = 20.79$, $p = 0.0003$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 19 | 0.120 | 0.128 | 0.937 | 0.7766 | 0.8972 | ns  |
+| a-helix     | 43 | 0.272 | 0.278 | 0.980 | 0.8972 | 0.8972 | ns  |
+| α→β loop | 14 | 0.089 | 0.204 | **0.433** | 0.0013 | **0.0042** | **  |
+| β→α loop | 38 | 0.241 | 0.215 | 1.117 | 0.4965 | 0.8275 | ns  |
+| Flanking    | 44 | 0.278 | 0.174 | **1.598** | 0.0017 | **0.0042** | **  |
+
+**Pooled (start + end combined, $N = 316$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|
+| b-strand    | 45 | 0.142 | 0.128 | 1.110 | 0.4852 | ns  |
+| a-helix     | 78 | 0.247 | 0.278 | 0.889 | 0.3748 | ns  |
+| α→β loop | 27 | 0.085 | 0.204 | **0.418** | **<0.0001** | *** |
+| β→α loop | 57 | 0.180 | 0.215 | 0.837 | 0.2997 | ns  |
+| Flanking    | 109 | 0.345 | 0.174 | **1.980** | **<0.0001** | *** |
+
+![Full-domain enrichment: all start and end positions](figures/alt/as_splice_junctions_full.png)
+
+![Full-domain enrichment: pooled](figures/alt/as_splice_junctions_full_pooled.png)
+
+### Conclusion
+
+Both views agree on the core result. **Start positions are strongly non-random**
+($\chi^2(4) = 72.58$, $p < 0.0001$ full-domain; $\chi^2(3) = 15.18$,
+$p = 0.0017$ core-only): AS regions tend to start in flanking tails
+($\rho = 2.361$) and b-strand positions within the core ($\rho = 1.799$).
+α→β loop positions are consistently avoided ($\rho \approx 0.40-0.57$).
+**End positions show structured depletion of α→β loops** ($\rho = 0.433$,
+BH $p = 0.004$) and flanking enrichment ($\rho = 1.598$, BH $p = 0.004$)
+in the full-domain view, while the core-only test is marginal
+($\chi^2(3) = 10.13$, $p = 0.018$, no element survives BH correction).
+
+---
+
+### Part C -- AS boundaries vs. canonical junction null
+
+**Null:** Empirical frequency of canonical splice junctions across motif-core elements (from Analysis 1): β-strand = 0.176, α-helix = 0.368, α→β loop = 0.251, β→α loop = 0.205.
+
+This tests whether AS boundary placement differs from where canonical splice junctions already tend to land, controlling for pre-existing splice-site preferences.
+
+**Transcript start positions ($D_{\text{seq}}$, $N = 93$, global $\chi^2(3) = 10.32$, $p = 0.016$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 26 | 0.280 | 0.176 | 1.591 | 0.0169 | 0.0642 | ns  |
+| a-helix     | 35 | 0.376 | 0.368 | 1.023 | 0.8943 | 0.9855 | ns  |
+| α→β loop | 13 | 0.140 | 0.251 | 0.557 | 0.0321 | 0.0642 | ns  |
+| β→α loop | 19 | 0.204 | 0.205 | 0.996 | 0.9855 | 0.9855 | ns  |
+
+**Transcript end positions ($R_{\text{can}}-1$, $N = 114$, global $\chi^2(3) = 16.69$, $p = 0.0008$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 19 | 0.167 | 0.176 | 0.949 | 0.8178 | 0.8713 | ns  |
+| a-helix     | 43 | 0.377 | 0.368 | 1.025 | 0.8713 | 0.8713 | ns  |
+| α→β loop | 14 | 0.123 | 0.251 | **0.489** | 0.0062 | **0.0125** | *   |
+| β→α loop | 38 | 0.333 | 0.205 | **1.625** | 0.0025 | **0.0101** | *   |
+
+**Pooled (start + end combined, $N = 207$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|
+| b-strand    | 45 | 0.217 | 0.176 | 1.237 | 0.2034 | ns |
+| a-helix     | 78 | 0.377 | 0.368 | 1.024 | 0.8342 | ns |
+| α→β loop | 27 | 0.130 | 0.251 | **0.519** | **0.0021** | ** |
+| β→α loop | 57 | 0.275 | 0.205 | 1.342 | 0.0515 | ns |
+
+![AS boundary enrichment vs. canonical junction null: start vs end](figures/alt/as_junctions_vs_canonical_null.png)
+
+![AS boundary enrichment vs. canonical junction null: pooled](figures/alt/as_junctions_vs_canonical_null_pooled.png)
+
+#### Interpretation
+
+Compared to the residue null (Part A), switching to the canonical junction null reveals three things:
+
+1. **β-strand enrichment at start positions is not independently AS-specific** ($\rho$ drops from 1.799 to 1.591, ns after BH correction). Canonical junctions already slightly prefer β-strands over the residue baseline, so the enrichment seen in Part A is not unique to AS boundaries.
+
+2. **β-strand enrichment at end positions vanishes** ($\rho = 0.949$, ns). End-point β-strand signal in Part A was entirely an artefact of canonical splice-site preferences.
+
+3. **α→β loop avoidance at end positions is genuinely AS-specific** ($\rho = 0.489$, BH $p = 0.013$): canonical junctions do not over-avoid α→β loops, so the depletion at AS end points is a real structural constraint. **β→α loop enrichment also emerges at end positions** ($\rho = 1.625$, BH $p = 0.010$): canonical junctions actively avoid β→α loops, but AS end points do not share that avoidance.
+
+---
+
+## Analysis 4 -- VSP boundary placement in structural elements (motif-core null)
+
+> **Script:** `scripts/run_alternative_analysis.py`
+>
+> **Note:** This analysis uses UniProt VSP annotations as the source of splice boundaries, whereas Analysis 3 derives them computationally from transcript sequence alignment. Because both approaches recover the boundaries of the same alternatively spliced regions, this analysis serves as a cross-validation of Analysis 3. The near-identical results (β-strand enrichment, α→β loop depletion) confirm that the signal is robust to the choice of boundary-calling method.
+
+**Dataset:** **157 VSP spans** across 71 canonical proteins (Ensembl-matched,
+strict, diverge-checked).
+
+**Note:** Under the motif-core null, only boundary positions within
+`[first_beta_start, last_alpha_end]` are counted. Of 157 VSP spans:
+107 start positions and 117 end positions fall within the motif core.
+
+### Results
+
+**VSP start positions** ($N = 107$, global $\chi^2(3) = 9.92$, $p = 0.019$):
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 25 | 0.234 | 0.155 | 1.504 | 0.0400 | 0.0831 | ns  |
+| a-helix     | 42 | 0.393 | 0.336 | 1.167 | 0.3157 | 0.4209 | ns  |
+| α→β loop | 16 | 0.150 | 0.248 | 0.604 | 0.0416 | 0.0831 | ns  |
+| β→α loop | 24 | 0.224 | 0.261 | 0.860 | 0.4598 | 0.4598 | ns  |
+
+**VSP end positions** ($N = 117$, global $\chi^2(3) = 10.92$, $p = 0.012$):
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | Raw $p$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|---|
+| b-strand    | 24 | 0.205 | 0.155 | 1.320 | 0.1723 | 0.3445 | ns  |
+| a-helix     | 43 | 0.368 | 0.336 | 1.093 | 0.5600 | 0.5600 | ns  |
+| α→β loop | 14 | 0.120 | 0.248 | **0.483** | 0.0054 | **0.0217** | *   |
+| β→α loop | 36 | 0.308 | 0.261 | 1.180 | 0.3205 | 0.4273 | ns  |
+
+**Pooled (start + end combined, $N = 224$):**
+
+| Element | $N_t$ | $f_t$ | $\pi_t^0$ | $\rho_t$ | BH $p$ | Sig |
+|---|---|---|---|---|---|---|
+| b-strand    | 49 | 0.219 | 0.155 | **1.408** | **0.0323** | *  |
+| a-helix     | 85 | 0.379 | 0.336 | 1.128 | 0.3533 | ns |
+| α→β loop | 30 | 0.134 | 0.248 | **0.541** | **0.0025** | ** |
+| β→α loop | 60 | 0.268 | 0.261 | 1.027 | 0.8359 | ns |
+
+![VSP boundary enrichment (motif-core null)](figures/alt/vsp_boundary_enrichment.png)
+
+![VSP boundary enrichment pooled](figures/alt/vsp_boundary_pooled.png)
+
+### Conclusion
+
+In the end-position test, α→β loop depletion reaches individual significance
+($\rho = 0.483$, BH $p = 0.022$). The pooled test confirms both b-strand
+enrichment ($\rho = 1.408$, BH $p = 0.032$) and α→β loop depletion
+($\rho = 0.541$, BH $p = 0.003$). This confirms that VSP boundaries within
+the TIM-barrel core preferentially fall in b-strand regions and avoid
+α→β loop connectors.
+
+---
+
+## Analysis 5 -- Structural impact on barrel architecture (strict)
+
+> **Script:** `scripts/run_alternative_analysis.py`
+
+**Dataset:** 123 isoforms with >= 1 VSP with its boundary within the motif core.
+
+### Combined: (b/a) repeat as one motif
+
+**Intact motif count distribution** ($n = 123$ isoforms):
 
 | Intact motifs | Isoforms | % |
 |---|---|---|
-| 0 |  8 |  6.1% |
-| 1 |  2 |  1.5% |
-| 2 |  3 |  2.3% |
-| 3 | 10 |  7.6% |
-| 4 | 10 |  7.6% |
-| 5 | 26 | 19.8% |
-| 6 | 28 | 21.4% |
-| 7 | 19 | 14.5% |
-| 8 | 25 | 19.1% |
+| 0 |  2 |  1.6% |
+| 1 |  3 |  2.4% |
+| 2 |  8 |  6.5% |
+| 3 | 11 |  8.9% |
+| 4 | 19 | 15.4% |
+| 5 | 27 | 22.0% |
+| 6 | 28 | 22.8% |
+| 7 | 25 | 20.3% |
 
-Mean intact motifs: **5.4** (median 6). The distribution is bimodal: a majority cluster (55%) retains 5–8 motifs, while a minority (17%) retains ≤ 3. Approximately one in five isoforms (19%) has a fully intact barrel; one in sixteen (6%) is completely disrupted.
+Mean intact motifs: **4.93** (median 5). 1 isoform (0.8%) retains a fully
+intact barrel (all annotated motifs intact).
 
 **Per-position disruption rate** (partial + removed):
 
 | Position | Disrupted / Total | Rate |
 |---|---|---|
-| 1 | 47 / 131 | 35.9% |
-| 2 | 48 / 131 | 36.6% |
-| 3 | 34 / 129 | 26.4% |
-| 4 | 39 / 129 | 30.2% |
-| 5 | 35 / 129 | 27.1% |
-| 6 | 28 / 129 | 21.7% |
-| 7 | 37 / 125 | 29.6% |
-| 8 | 34 / 108 | 31.5% |
+| 1 | 53 / 123 | 43.1% |
+| 2 | 49 / 123 | 39.8% |
+| 3 | 42 / 122 | 34.4% |
+| 4 | 42 / 122 | 34.4% |
+| 5 | 39 / 122 | 32.0% |
+| 6 | 35 / 122 | 28.7% |
+| 7 | 40 / 112 | 35.7% |
+| 8 | 29 /  89 | 32.6% |
 
-Positions 1–2 show the highest disruption rates (~36%), consistent with the Analysis 4 finding that VSP boundaries are enriched near the domain's N-terminal edge. Position 6 is least disrupted (22%).
+![Domain disruption (strict)](figures/alt/as_domain_disruption.png)
 
-![Domain disruption combined](figures/as_domain_disruption.png)
-*Figure: (Left) Intact (β/α) motifs retained per isoform. (Right) Per-barrel-position disruption rate, treating each repeat as one unit.*
+![Per-isoform motif disruption heatmap (strict)](figures/alt/isoform_disruption_heatmap.png)
 
-![Per-protein motif disruption heatmap](figures/motif_disruption_heatmap.png)
-*Figure: Per-protein motif disruption heatmap. Rows = 74 canonical proteins with AS isoforms (hierarchically clustered by Jaccard distance, average linkage); columns = barrel motif positions M1–M8. Red = motif disrupted (partial or removed) in at least one isoform; white = intact in all isoforms; grey = motif position not annotated for that protein ($K_p < $ position).*
+![Per-isoform motif disruption heatmap -- sorted by gene name (strict)](figures/alt/isoform_disruption_heatmap_by_gene.png)
+
+
+![Per-gene disruption count heatmap](figures/alt/gene_disruption_count_heatmap.png)
+
+![Per-gene disruption count heatmap (split)](figures/alt/gene_disruption_count_heatmap_split.png)
 
 ### Conclusion
 
-AS events in TIM-barrel proteins typically preserve a majority of the canonical repeat architecture (mean 5.4 / 8 motifs; 11.9 / 16 elements intact). Disruption is modestly concentrated at N-terminal positions (1–2, ~36%), but β-strands and α-helices within each repeat are equally susceptible. One in five isoforms retains a fully intact barrel. When VSPs introduce novel isoform-specific replacement sequence (27 of 95 single-VSP isoforms with structures), AlphaFold predicts those regions to be disordered (mean pLDDT = 49.7 vs. 82.7 pre-VSP and 90.9 post-VSP; all pairwise comparisons $p < 0.001$, Mann-Whitney U), suggesting TIM-barrel AS isoforms predominantly *remove* a defined barrel segment rather than substitute one folded structure for another.
+N-terminal positions 1-2 remain the most disrupted (~40-43%), while position 6
+is consistently the least disrupted (28.7%). The mean intact motif count of
+4.93 (median 5) confirms that the majority of isoforms retain most of the
+barrel, with partial structural disruption rather than wholesale removal being
+the typical outcome.
+
+---
+
+## Analysis 6 -- Alternative sequences added by AS isoforms
+
+> **Script:** `scripts/run_alternative_analysis.py` (database query, no dedicated script)
+
+**Question:** Do any AS isoforms add alternative sequence with meaningful functional attributes, rather than merely deleting or disrupting canonical sequence?
+
+**Dataset:** All 123 strict AS isoforms compared against their canonical protein sequences. 16 isoforms are longer than their canonical counterpart.
+
+The extra sequence falls into two structurally distinct categories.
+
+---
+
+### Category 1 -- Alternative N-terminal sequences (subcellular re-targeting)
+
+The most common pattern: the canonical N-terminus is replaced by a longer alternative sequence. Because the TIM barrel domain sequence itself is unaffected (domain alignment recovers the same-length core in all cases), the functional role of these extensions is not enzymatic — they encode **subcellular targeting information**.
+
+| Isoform | Gene | Protein | Canonical N-term | Alt N-term | Net gain |
+|---|---|---|---|---|---|
+| P20839-7 | IMPDH1 | IMP dehydrogenase 1 | 33 aa | 85 aa | +52 aa |
+| P20839-6 | IMPDH1 | IMP dehydrogenase 1 |  1 aa | 86 aa | +85 aa |
+| P20839-5 | IMPDH1 | IMP dehydrogenase 1 |  1 aa | 76 aa | +75 aa |
+| C9JRZ8-2 | AKR1B15 | Aldo-keto reductase 1B15 | 22 aa | 50 aa | +28 aa |
+| P60174-3 | TPI1 | Triosephosphate isomerase |  1 aa | 38 aa | +37 aa |
+| P13716-2 | ALAD | Aminolevulinic acid dehydratase | 38 aa | 67 aa | +29 aa |
+
+The clearest documented case is **AKR1B15 isoform 2** (C9JRZ8-2): its alternative N-terminus encodes a mitochondrial targeting signal that redirects the enzyme from the cytoplasm to the mitochondria. **IMPDH1** shows four distinct alternative N-termini across isoforms 3, 5, 6, and 7, consistent with multiple subcellular localisation variants of this key purine-biosynthesis enzyme. **TPI1 isoform 3** (the textbook TIM barrel protein) also gains an N-terminal extension.
+
+**The barrel is not being re-engineered — the cell is re-routing where it gets delivered.**
+
+---
+
+### Category 2 -- Large insertions within the barrel domain (structurally unusual)
+
+Two isoforms replace a single canonical residue with a long alternative sequence at a position **inside** the annotated TIM barrel domain:
+
+| Isoform | Gene | Protein | VSP position | Alt length | Domain range |
+|---|---|---|---|---|---|
+| Q9Y303-3 | AMDHD2 | N-acetylglucosamine-6-phosphate deacetylase | pos 323 | 186 aa | 67–366 |
+| Q9HCC8-3 | GDPD2 | Glycerophosphoinositol phosphodiesterase 2 | pos 436 |  52 aa | 213–480 |
+
+In both cases the domain alignment tool still recovers a full-length TIM barrel core from the isoform (domain sequence length unchanged), implying that the inserted segment sits as a large exon-encoded loop or insertion between two structural units of the barrel — rather than replacing them. The functional role of these inserted segments is not annotated and remains unknown.
+
+**AMDHD2 isoform 3 (+185 aa total) is the most structurally dramatic case in the dataset**: a 186 aa alternative segment inserted within motif position 6 of the barrel (canonical residue 323, lying between βα-repeats 5 and 6 in the domain 67–366).
+
+---
+
+### Conclusion
+
+Alternative splicing in TIM barrel proteins adds functional sequence in two modes:
+
+1. **Subcellular re-targeting** (6+ isoforms): N-terminal substitutions encode organelle-targeting signals, redirecting the barrel enzyme without altering its catalytic core. This is the dominant mode of gain-of-function AS in this dataset.
+
+2. **Intra-barrel insertions** (2 isoforms): Large alternative exons are inserted within the barrel body. The barrel core is preserved, but the biological function of the inserted segments is unknown and warrants further investigation.

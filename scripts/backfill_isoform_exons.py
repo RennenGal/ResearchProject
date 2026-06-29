@@ -34,7 +34,6 @@ Usage:
     python scripts/backfill_isoform_exons.py --limit 20   # test: first N canonical isoforms
 """
 
-import argparse
 import json
 import logging
 import sqlite3
@@ -44,7 +43,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.api.ensembl_client import transcript_exon_boundaries
-from protein_data_collector.config import get_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -282,58 +280,35 @@ def flag_domain_boundaries(conn: sqlite3.Connection) -> tuple[int, int]:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# Pipeline entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Backfill exon junction data for UniProt isoforms"
-    )
-    parser.add_argument("--db",           default=None)
-    parser.add_argument("--limit",        type=int, default=None,
-                        help="Process only first N canonical isoforms in Phase 1 (testing)")
-    parser.add_argument("--phase1-only",  action="store_true")
-    parser.add_argument("--phase2-only",  action="store_true")
-    parser.add_argument("--phase3-only",  action="store_true")
-    parser.add_argument("--log-level",    default="INFO")
-    args = parser.parse_args()
-
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
-    db_path = args.db or get_config().db_path
+def run(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
 
     _ensure_columns(conn)
 
-    run_all = not (args.phase1_only or args.phase2_only or args.phase3_only)
+    n = backfill_canonical(conn, limit=None)
+    print(f"\n  Phase 1 complete: {n} canonical isoforms updated")
 
-    if run_all or args.phase1_only:
-        n = backfill_canonical(conn, limit=args.limit)
-        print(f"\n  Phase 1 complete: {n} canonical isoforms updated")
+    n = backfill_alternative(conn)
+    print(f"  Phase 2 complete: {n} alternative isoforms updated")
 
-    if run_all or args.phase2_only:
-        n = backfill_alternative(conn)
-        print(f"  Phase 2 complete: {n} alternative isoforms updated")
+    flagged, total = flag_domain_boundaries(conn)
 
-    if run_all or args.phase3_only:
-        flagged, total = flag_domain_boundaries(conn)
+    total_aff  = conn.execute(f"SELECT COUNT(*) FROM {_AFFECTED_TABLE}").fetchone()[0]
+    evaluated  = conn.execute(
+        f"SELECT COUNT(*) FROM {_AFFECTED_TABLE} WHERE exon_annotations IS NOT NULL"
+    ).fetchone()[0]
 
-        total_aff  = conn.execute(f"SELECT COUNT(*) FROM {_AFFECTED_TABLE}").fetchone()[0]
-        evaluated  = conn.execute(
-            f"SELECT COUNT(*) FROM {_AFFECTED_TABLE} WHERE exon_annotations IS NOT NULL"
-        ).fetchone()[0]
-
-        print(f"\n{'='*60}")
-        print(f"  Exon junction analysis — UniProt isoforms")
-        print(f"{'='*60}")
-        print(f"  AS-affected isoforms (total)        : {total_aff}")
-        print(f"  With exon data (coverage)           : {evaluated} / {total_aff}")
-        print(f"  Exon junction inside domain         : {flagged}")
-        if evaluated:
-            print(f"  Fraction with intra-domain junction : {flagged/evaluated:.1%}")
-        print(f"{'='*60}")
+    print(f"\n{'='*60}")
+    print(f"  Exon junction analysis — UniProt isoforms")
+    print(f"{'='*60}")
+    print(f"  AS-affected isoforms (total)        : {total_aff}")
+    print(f"  With exon data (coverage)           : {evaluated} / {total_aff}")
+    print(f"  Exon junction inside domain         : {flagged}")
+    if evaluated:
+        print(f"  Fraction with intra-domain junction : {flagged/evaluated:.1%}")
+    print(f"{'='*60}")
 
     conn.close()
-
-
-if __name__ == "__main__":
-    main()

@@ -91,11 +91,23 @@ def identify_ba_motifs(
     helices = _runs(dom_slice, 'H', offset)
 
     motifs: list[dict] = []
-    helix_idx = 0
+    helix_idx    = 0
+    last_alpha_end = 0  # end position of the last paired helix
 
     for beta_start, beta_end in strands:
-        # Find the first helix that starts after this strand ends
-        while helix_idx < len(helices) and helices[helix_idx][0] <= beta_end:
+        # Skip strands that start inside the previous motif's span — these
+        # produce overlapping [beta_start, alpha_end] intervals and indicate
+        # the algorithm picked up a strand that belongs to an already-covered
+        # region (e.g. IMPDH1 where several strands precede the first helix).
+        if beta_start <= last_alpha_end:
+            continue
+
+        # Advance past helices that (a) start before this strand ends, or
+        # (b) were already consumed by a previous motif.
+        while helix_idx < len(helices) and (
+            helices[helix_idx][0] <= beta_end
+            or helices[helix_idx][0] <= last_alpha_end
+        ):
             helix_idx += 1
 
         if helix_idx >= len(helices):
@@ -111,7 +123,8 @@ def identify_ba_motifs(
             "alpha_start": alpha_start,
             "alpha_end":   alpha_end,
         })
-        helix_idx += 1
+        helix_idx    += 1
+        last_alpha_end = alpha_end
 
         if len(motifs) == 8:
             break

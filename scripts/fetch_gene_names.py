@@ -18,7 +18,6 @@ Usage
     python scripts/fetch_gene_names.py --propagate-only   # skip fetch, just propagate
 """
 
-import argparse
 import logging
 import sqlite3
 import sys
@@ -27,7 +26,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.api.uniprot_client import UniProtClient
-from protein_data_collector.config import get_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -132,41 +130,26 @@ def propagate_gene_names(conn: sqlite3.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# Pipeline entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Fetch and propagate gene names")
-    parser.add_argument("--db",              default=None)
-    parser.add_argument("--propagate-only",  action="store_true",
-                        help="Skip UniProt fetch; only propagate existing proteins.gene_name")
-    parser.add_argument("--log-level",       default="INFO")
-    args = parser.parse_args()
-
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
-
-    db_path = args.db or get_config().db_path
+def run(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
 
     logger.info("=== Step 1: ensure gene_name columns ===")
     ensure_gene_name_columns(conn)
 
-    if not args.propagate_only:
-        logger.info("=== Step 2: fetch gene names from UniProt ===")
-        found = fetch_gene_names(conn)
+    logger.info("=== Step 2: fetch gene names from UniProt ===")
+    fetch_gene_names(conn)
 
-        filled = conn.execute(
-            "SELECT COUNT(*) FROM proteins WHERE gene_name IS NOT NULL"
-        ).fetchone()[0]
-        total = conn.execute("SELECT COUNT(*) FROM proteins").fetchone()[0]
-        print(f"\n  Gene names in proteins: {filled} / {total}")
+    filled = conn.execute(
+        "SELECT COUNT(*) FROM proteins WHERE gene_name IS NOT NULL"
+    ).fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) FROM proteins").fetchone()[0]
+    print(f"\n  Gene names in proteins: {filled} / {total}")
 
     logger.info("=== Step 3: propagate to downstream tables ===")
     propagate_gene_names(conn)
 
     conn.close()
     print("\nDone.")
-
-
-if __name__ == "__main__":
-    main()

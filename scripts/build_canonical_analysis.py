@@ -25,7 +25,6 @@ Usage
     python scripts/build_canonical_analysis.py --rebuild   # DROP and recreate
 """
 
-import argparse
 import json
 import logging
 import sqlite3
@@ -33,8 +32,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from protein_data_collector.config import get_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -208,30 +205,14 @@ def print_summary(conn: sqlite3.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# Pipeline entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Build canonical_analysis from isoforms + proteins"
-    )
-    parser.add_argument("--db",       default=None)
-    parser.add_argument("--rebuild",  action="store_true",
-                        help="Clear existing rows and repopulate")
-    parser.add_argument("--log-level", default="INFO")
-    args = parser.parse_args()
-
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
-
-    db_path = args.db or get_config().db_path
+def run(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
 
     ensure_table(conn)
-    build(conn, rebuild=args.rebuild)
+    build(conn, rebuild=False)
     print_summary(conn)
 
     conn.close()
-
-
-if __name__ == "__main__":
-    main()

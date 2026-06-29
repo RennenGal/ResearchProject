@@ -25,7 +25,6 @@ Usage:
     python scripts/create_analysis_table.py --db path/to/db.sqlite
 """
 
-import argparse
 import json
 import sqlite3
 from collections import Counter, defaultdict
@@ -33,7 +32,6 @@ from pathlib import Path
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from protein_data_collector.config import get_config
 
 
 # ---------------------------------------------------------------------------
@@ -310,16 +308,11 @@ def print_summary(canonical_rows, isoform_rows):
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Pipeline entry point
 # ---------------------------------------------------------------------------
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--db", default=None)
-    args = parser.parse_args()
-
-    db_path = args.db or get_config().db_path
-    conn    = sqlite3.connect(db_path)
+def run(db_path: str) -> None:
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
     print("Building canonical rows …")
@@ -350,7 +343,3 @@ def main():
 
     conn.close()
     print(f"Done.  DB: {db_path}")
-
-
-if __name__ == "__main__":
-    main()

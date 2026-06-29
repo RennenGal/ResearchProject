@@ -1,6 +1,24 @@
 #!/usr/bin/env python3
 """
-Run the protein data collection pipeline.
+Run the protein data collection pipeline end-to-end.
+
+Phases
+------
+Phase 1  — Fetch InterPro / UniProt entry list (DataCollector)
+Phase 2  — Collect protein records (DataCollector)
+Phase 3  — Collect isoforms from UniProt (DataCollector)
+Phase 4  — Backfill protein metadata (protein_name, reviewed, annotation_score)
+Phase 5  — Fetch and propagate gene names
+Phase 6  — Backfill TIM barrel domain locations
+Phase 7  — Deduplicate proteins by gene_name
+Phase 8  — Build affected_isoforms table + backfill fragment isoforms
+Phase 9  — Build canonical_analysis table
+Phase 10 — Annotate TIM barrel motifs (AlphaFold + pydssp)
+Phase 11 — Collect Ensembl transcripts + alignment analysis + backfill exon data
+Phase 12 — Backfill isoform exon junction data (UniProt isoforms)
+Phase 13 — Build analysis_proteins table and views
+Phase 14 — (Reserved for future use)
+Phase 15 — (Reserved for future use)
 
 Usage
 -----
@@ -26,6 +44,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.collector.data_collector import DataCollector
 from protein_data_collector.config import get_config
+
+from backfill_protein_metadata import run as run_backfill_protein_metadata
+from fetch_gene_names import run as run_fetch_gene_names
+from backfill_domain_locations import run as run_backfill_domain_locations
+from dedup_by_gene import run as run_dedup_by_gene
+from build_affected_isoforms import run as run_build_affected_isoforms
+from build_canonical_analysis import run as run_build_canonical_analysis
+from annotate_motifs import run as run_annotate_motifs
+from collect_ensembl import run as run_collect_ensembl
+from backfill_isoform_exons import run as run_backfill_isoform_exons
+from create_analysis_table import run as run_create_analysis_table
 
 
 def setup_logging(log_file: str = None, level: str = "INFO") -> None:
@@ -82,8 +111,52 @@ def main() -> None:
         print("\n" + report.summary())
     else:
         logger.info("Starting full collection pipeline...")
+
+        # Phases 1–3: UniProt data collection
         report = collector.run_full_collection()
         print("\n" + report.summary())
+
+        # Phase 4: Backfill protein metadata
+        logger.info("=== Phase 4: Backfill protein metadata ===")
+        run_backfill_protein_metadata(db_path)
+
+        # Phase 5: Fetch gene names
+        logger.info("=== Phase 5: Fetch gene names ===")
+        run_fetch_gene_names(db_path)
+
+        # Phase 6: Backfill domain locations
+        logger.info("=== Phase 6: Backfill domain locations ===")
+        run_backfill_domain_locations(db_path)
+
+        # Phase 7: Deduplicate by gene name
+        logger.info("=== Phase 7: Deduplicate by gene name ===")
+        run_dedup_by_gene(db_path)
+
+        # Phase 8: Build affected_isoforms + backfill fragment isoforms
+        logger.info("=== Phase 8: Build affected_isoforms ===")
+        run_build_affected_isoforms(db_path)
+
+        # Phase 9: Build canonical_analysis
+        logger.info("=== Phase 9: Build canonical_analysis ===")
+        run_build_canonical_analysis(db_path)
+
+        # Phase 10: Annotate motifs
+        logger.info("=== Phase 10: Annotate motifs ===")
+        run_annotate_motifs(db_path)
+
+        # Phase 11: Collect Ensembl + backfill exon data
+        logger.info("=== Phase 11: Collect Ensembl transcripts ===")
+        run_collect_ensembl(db_path)
+
+        # Phase 12: Backfill isoform exon junctions
+        logger.info("=== Phase 12: Backfill isoform exon junctions ===")
+        run_backfill_isoform_exons(db_path)
+
+        # Phase 13: Build analysis_proteins table
+        logger.info("=== Phase 13: Build analysis_proteins table ===")
+        run_create_analysis_table(db_path)
+
+        logger.info("Pipeline complete.")
 
 
 if __name__ == "__main__":

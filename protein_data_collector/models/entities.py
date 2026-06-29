@@ -1,7 +1,7 @@
 """Pydantic models for the three-tier protein database."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -62,7 +62,7 @@ class Isoform(BaseModel):
     exon_count: Optional[int] = None
     exon_annotations: Optional[List[Dict[str, Any]]] = None   # [{start, end}, ...]
     splice_variants: Optional[List[Dict[str, Any]]] = None    # UniProt Alternative-sequence features
-    tim_barrel_location: Optional[Dict[str, Any]] = None      # {domain_id, start, end, length, source}
+    tim_barrel_location: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None  # single or list of {domain_id, start, end, length, source}
     tim_barrel_sequence: Optional[str] = None                 # sequence[start-1:end]; None for fragments or missing location
     ensembl_transcript_id: Optional[str] = None
     alphafold_id: Optional[str] = None
@@ -86,16 +86,18 @@ class Isoform(BaseModel):
 
     @model_validator(mode="after")
     def check_tim_barrel_bounds(self) -> "Isoform":
-        loc = self.tim_barrel_location
-        if loc and self.sequence_length:
-            start, end = loc.get("start", 0), loc.get("end", 0)
-            if start > 0 and end > 0:
-                if start >= end:
-                    raise ValueError(f"TIM barrel start {start} >= end {end}")
-                if end > self.sequence_length:
-                    raise ValueError(
-                        f"TIM barrel end {end} exceeds sequence length {self.sequence_length}"
-                    )
+        locs = self.tim_barrel_location
+        if locs and self.sequence_length:
+            entries = locs if isinstance(locs, list) else [locs]
+            for loc in entries:
+                start, end = loc.get("start", 0), loc.get("end", 0)
+                if start > 0 and end > 0:
+                    if start >= end:
+                        raise ValueError(f"TIM barrel start {start} >= end {end}")
+                    if end > self.sequence_length:
+                        raise ValueError(
+                            f"TIM barrel end {end} exceeds sequence length {self.sequence_length}"
+                        )
         return self
 
     @model_validator(mode="after")
@@ -104,10 +106,13 @@ class Isoform(BaseModel):
         if not self.is_fragment:
             self.is_fragment = self.sequence_length < _FRAGMENT_LENGTH_THRESHOLD
 
-        # tim_barrel_sequence: slice from location if available and not a fragment
+        # tim_barrel_sequence: use the largest domain instance (first if equal)
         if self.tim_barrel_sequence is None and self.tim_barrel_location and not self.is_fragment:
-            start = self.tim_barrel_location.get("start")
-            end = self.tim_barrel_location.get("end")
+            locs = self.tim_barrel_location
+            entries = locs if isinstance(locs, list) else [locs]
+            primary = max(entries, key=lambda d: d.get("length", 0))
+            start = primary.get("start")
+            end = primary.get("end")
             if start and end and self.sequence:
                 self.tim_barrel_sequence = self.sequence[start - 1:end]
 
