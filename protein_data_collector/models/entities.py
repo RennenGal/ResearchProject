@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 _VALID_AA = set("ACDEFGHIKLMNPQRSTVWYBZXUOJ")
 
 
-class TIMBarrelEntry(BaseModel):
+class DomainEntry(BaseModel):
     accession: str
     entry_type: str  # 'pfam' | 'interpro' | 'cathgene3d'
     name: str
@@ -34,9 +34,13 @@ class TIMBarrelEntry(BaseModel):
         return v
 
 
+# Backward-compatibility alias — existing code that imports TIMBarrelEntry keeps working
+TIMBarrelEntry = DomainEntry
+
+
 class Protein(BaseModel):
     uniprot_id: str
-    tim_barrel_accession: str
+    domain_accession: str
     protein_name: Optional[str] = None
     gene_name: Optional[str] = None
     organism: str = "Homo sapiens"
@@ -47,7 +51,7 @@ class Protein(BaseModel):
     created_at: Optional[datetime] = None
 
 
-# Minimum length to contain a full TIM barrel domain (~250 residues typical).
+# Minimum length to contain a full domain (~250 residues typical for TIM barrel).
 # Sequences below this threshold are UniProt fragments, not full-length proteins.
 _FRAGMENT_LENGTH_THRESHOLD = 200
 
@@ -62,8 +66,8 @@ class Isoform(BaseModel):
     exon_count: Optional[int] = None
     exon_annotations: Optional[List[Dict[str, Any]]] = None   # [{start, end}, ...]
     splice_variants: Optional[List[Dict[str, Any]]] = None    # UniProt Alternative-sequence features
-    tim_barrel_location: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None  # single or list of {domain_id, start, end, length, source}
-    tim_barrel_sequence: Optional[str] = None                 # sequence[start-1:end]; None for fragments or missing location
+    domain_location: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None  # single or list of {domain_id, start, end, length, source}
+    domain_sequence: Optional[str] = None                     # sequence[start-1:end]; None for fragments or missing location
     ensembl_transcript_id: Optional[str] = None
     alphafold_id: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -85,8 +89,8 @@ class Isoform(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_tim_barrel_bounds(self) -> "Isoform":
-        locs = self.tim_barrel_location
+    def check_domain_bounds(self) -> "Isoform":
+        locs = self.domain_location
         if locs and self.sequence_length:
             entries = locs if isinstance(locs, list) else [locs]
             for loc in entries:
@@ -102,18 +106,18 @@ class Isoform(BaseModel):
 
     @model_validator(mode="after")
     def compute_derived_fields(self) -> "Isoform":
-        # is_fragment: sequence too short to contain a full TIM barrel domain
+        # is_fragment: sequence too short to contain a full domain
         if not self.is_fragment:
             self.is_fragment = self.sequence_length < _FRAGMENT_LENGTH_THRESHOLD
 
-        # tim_barrel_sequence: use the largest domain instance (first if equal)
-        if self.tim_barrel_sequence is None and self.tim_barrel_location and not self.is_fragment:
-            locs = self.tim_barrel_location
+        # domain_sequence: use the largest domain instance (first if equal)
+        if self.domain_sequence is None and self.domain_location and not self.is_fragment:
+            locs = self.domain_location
             entries = locs if isinstance(locs, list) else [locs]
             primary = max(entries, key=lambda d: d.get("length", 0))
             start = primary.get("start")
             end = primary.get("end")
             if start and end and self.sequence:
-                self.tim_barrel_sequence = self.sequence[start - 1:end]
+                self.domain_sequence = self.sequence[start - 1:end]
 
         return self

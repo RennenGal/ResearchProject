@@ -110,7 +110,7 @@ class InterProCollector:
                 proteins.append(
                     Protein(
                         uniprot_id=uid,
-                        tim_barrel_accession=entry.accession,
+                        domain_accession=entry.accession,
                         organism=organism,
                     )
                 )

@@ -8,7 +8,7 @@ original 407-protein database.  Key decisions:
 - splice_variants stores the UniProt "Alternative sequence" features that
   apply to *this* isoform (positions + sequence changes).  This is the
   primary input for downstream AS-effect analysis.
-- tim_barrel_location is populated only for the canonical isoform via
+- domain_location is populated only for the canonical isoform via
   InterPro; alternative isoforms inherit None and will be annotated during
   analysis once splice coordinates are mapped onto domain boundaries.
 - exon_annotations is left None; it requires Ensembl coordinate mapping
@@ -87,7 +87,7 @@ class UniProtCollector:
         ensembl_transcript_id = _extract_ensembl_transcript_id(data)
         alphafold_id = _extract_alphafold_id(data)
         all_splice_features = _extract_all_splice_features(data)
-        tim_barrel_loc = self._get_tim_barrel_location(uid, protein.tim_barrel_accession)
+        domain_loc = self._get_domain_location(uid, protein.domain_accession)
 
         # --- Canonical isoform ---
         canonical = Isoform(
@@ -97,7 +97,7 @@ class UniProtCollector:
             sequence=canonical_seq,
             sequence_length=len(canonical_seq),
             splice_variants=[],   # canonical has no alternative sequences
-            tim_barrel_location=tim_barrel_loc,
+            domain_location=domain_loc,
             ensembl_transcript_id=ensembl_transcript_id,
             alphafold_id=alphafold_id,
         )
@@ -127,7 +127,7 @@ class UniProtCollector:
                     sequence=sequence,
                     sequence_length=len(sequence),
                     splice_variants=splice_variants,
-                    tim_barrel_location=None,  # computed during analysis
+                    domain_location=None,  # computed during analysis
                     ensembl_transcript_id=ensembl_transcript_id,
                     alphafold_id=alphafold_id,
                 )
@@ -135,13 +135,13 @@ class UniProtCollector:
 
         return isoforms
 
-    def _get_tim_barrel_location(
-        self, uniprot_id: str, tim_barrel_accession: str
+    def _get_domain_location(
+        self, uniprot_id: str, domain_accession: str
     ) -> Optional[List[Dict[str, Any]]]:
         try:
-            return self.interpro.get_domain_boundaries(uniprot_id, tim_barrel_accession)
+            return self.interpro.get_domain_boundaries(uniprot_id, domain_accession)
         except Exception as e:
-            logger.warning("Could not get TIM barrel location for %s: %s", uniprot_id, e)
+            logger.warning("Could not get domain location for %s: %s", uniprot_id, e)
             return None
 
 

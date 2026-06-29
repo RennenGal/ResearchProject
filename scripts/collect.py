@@ -9,7 +9,7 @@ Phase 2  — Collect protein records (DataCollector)
 Phase 3  — Collect isoforms from UniProt (DataCollector)
 Phase 4  — Backfill protein metadata (protein_name, reviewed, annotation_score)
 Phase 5  — Fetch and propagate gene names
-Phase 6  — Backfill TIM barrel domain locations
+Phase 6  — Backfill domain locations
 Phase 7  — Deduplicate proteins by gene_name
 Phase 8  — Build affected_isoforms table + backfill fragment isoforms
 Phase 9  — Build canonical_analysis table
@@ -83,15 +83,19 @@ def main() -> None:
     parser.add_argument("--db", default=None, help="Override database path from config")
     parser.add_argument("--log-file", default=None, help="Also write logs to this file")
     parser.add_argument("--log-level", default="INFO", help="Logging level (default: INFO)")
+    parser.add_argument("--domain", default="tim_barrel",
+                        help="Domain type to collect (default: tim_barrel)")
+    parser.add_argument("--organism", default="homo_sapiens",
+                        help="Organism to collect (default: homo_sapiens)")
     args = parser.parse_args()
 
     setup_logging(args.log_file, args.log_level)
     logger = logging.getLogger(__name__)
 
     db_path = args.db or get_config().db_path
-    logger.info("Database : %s", db_path)
+    logger.info("Database : %s  domain : %s  organism : %s", db_path, args.domain, args.organism)
 
-    collector = DataCollector(db_path=db_path, domain="tim_barrel", organism="homo_sapiens")
+    collector = DataCollector(db_path=db_path, domain=args.domain, organism=args.organism)
 
     if args.collect_proteins:
         logger.info("Collecting entries and proteins (Phase 1+2 only)...")
@@ -126,7 +130,7 @@ def main() -> None:
 
         # Phase 6: Backfill domain locations
         logger.info("=== Phase 6: Backfill domain locations ===")
-        run_backfill_domain_locations(db_path)
+        run_backfill_domain_locations(db_path, domain=args.domain)
 
         # Phase 7: Deduplicate by gene name
         logger.info("=== Phase 7: Deduplicate by gene name ===")
@@ -138,7 +142,7 @@ def main() -> None:
 
         # Phase 9: Build canonical_analysis
         logger.info("=== Phase 9: Build canonical_analysis ===")
-        run_build_canonical_analysis(db_path)
+        run_build_canonical_analysis(db_path, domain=args.domain)
 
         # Phase 10: Annotate motifs
         logger.info("=== Phase 10: Annotate motifs ===")

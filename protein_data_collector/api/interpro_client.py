@@ -68,25 +68,23 @@ class InterProClient:
         return self.get_proteins_for_entry(accession, taxon_id=9606)
 
     def get_domain_boundaries(
-        self, uniprot_id: str, tim_barrel_accession: str
-    ) -> Optional[List[Dict[str, Any]]]:
+        self, uniprot_id: str, domain_accession: str
+    ) -> Optional[Dict[str, Any]]:
         """
-        Return all TIM barrel domain locations for *uniprot_id* from InterPro.
+        Return the domain boundary for *uniprot_id* from InterPro.
 
         Uses the entry-centric endpoint:
             entry/{db}/{accession}/protein/uniprot/{uid}
         which directly returns the protein's entry_protein_locations for that entry.
 
-        Returns a list of dicts [{domain_id, start, end, length, source}, ...], or None.
-        Most proteins have exactly one entry; tandem/repeat proteins may have more.
+        Returns a dict {domain_id, start, end, length, source} or None.
         """
-        db = _db_for_accession(tim_barrel_accession)
-        endpoint = f"entry/{db}/{tim_barrel_accession}/protein/uniprot/{uniprot_id}"
+        db = _db_for_accession(domain_accession)
+        endpoint = f"entry/{db}/{domain_accession}/protein/uniprot/{uniprot_id}"
         data = self._get(endpoint)
         if not data:
             return None
 
-        locations: List[Dict[str, Any]] = []
         for protein in data.get("proteins", []):
             for loc in protein.get("entry_protein_locations", []):
                 frags = loc.get("fragments", [])
@@ -94,14 +92,14 @@ class InterProClient:
                     start = frags[0].get("start")
                     end = frags[-1].get("end")
                     if start and end:
-                        locations.append({
-                            "domain_id": tim_barrel_accession,
+                        return {
+                            "domain_id": domain_accession,
                             "start": start,
                             "end": end,
                             "length": end - start + 1,
                             "source": "interpro_api",
-                        })
-        return locations if locations else None
+                        }
+        return None
 
     # ------------------------------------------------------------------
     # Internal

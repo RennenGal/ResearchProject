@@ -14,6 +14,7 @@ from typing import List, Optional
 
 from ..config import DOMAINS, ORGANISMS, DomainConfig, OrganismConfig
 from ..database.connection import ensure_db, get_connection
+from ..database.schema import init_db
 from ..database.storage import (
     deduplicate_proteins,
     get_all_domain_entries,
@@ -23,7 +24,7 @@ from ..database.storage import (
     upsert_isoforms,
     upsert_proteins,
 )
-from ..models.entities import Isoform, Protein, TIMBarrelEntry
+from ..models.entities import DomainEntry, Isoform, Protein, TIMBarrelEntry
 from .interpro_collector import InterProCollector
 from .uniprot_collector import UniProtCollector
 
@@ -50,6 +51,16 @@ class CollectionReport:
             f"  (alternative     : {self.alternative_isoforms})\n"
             f"Failed proteins    : {len(self.failed_proteins)}"
         )
+
+
+def _protein_from_row(row: dict, accession_col: str) -> Protein:
+    """Construct a Protein model from a DB row dict, remapping the domain accession column."""
+    data = dict(row)
+    # The DB column is named after the domain (e.g. tim_barrel_accession).
+    # The model field is domain_accession.
+    if accession_col in data and "domain_accession" not in data:
+        data["domain_accession"] = data.pop(accession_col)
+    return Protein(**data)
 
 
 class DataCollector:
@@ -129,7 +140,8 @@ class DataCollector:
             proteins_raw = get_all_proteins(conn, table=self.protein_table)
 
         proteins = [
-            Protein(**p) for p in proteins_raw
+            _protein_from_row(p, self.domain.accession_col)
+            for p in proteins_raw
             if p.get("canonical_uniprot_id") is None
         ]
         report = CollectionReport()
@@ -155,7 +167,7 @@ class DataCollector:
             }
 
         proteins = [
-            Protein(**all_proteins[uid])
+            _protein_from_row(all_proteins[uid], self.domain.accession_col)
             for uid in remaining_ids
             if uid in all_proteins
         ]
@@ -167,16 +179,19 @@ class DataCollector:
         return report
 
     def backfill_domain_locations(self) -> int:
-        """Populate tim_barrel_location for canonical isoforms where it is NULL."""
+        """Populate domain_location for canonical isoforms where it is NULL."""
         ensure_db(self.db_path)
+
+        accession_col = self.domain.accession_col
+        location_col  = self.domain.location_col
 
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
                 f"""
-                SELECT i.isoform_id, i.uniprot_id, p.tim_barrel_accession
+                SELECT i.isoform_id, i.uniprot_id, p.{accession_col}
                 FROM {self.isoform_table} i
                 JOIN {self.protein_table} p ON i.uniprot_id = p.uniprot_id
-                WHERE i.is_canonical = 1 AND i.tim_barrel_location IS NULL
+                WHERE i.is_canonical = 1 AND i.{location_col} IS NULL
                 """
             ).fetchall()
 
@@ -185,14 +200,14 @@ class DataCollector:
         logger.info("Backfilling domain locations for %d canonical isoforms", total)
 
         for idx, row in enumerate(rows, 1):
-            loc = self.uniprot._get_tim_barrel_location(
-                row["uniprot_id"], row["tim_barrel_accession"]
+            loc = self.uniprot._get_domain_location(
+                row["uniprot_id"], row[accession_col]
             )
             if loc:
                 with get_connection(self.db_path) as conn:
                     conn.execute(
                         f"UPDATE {self.isoform_table} "
-                        f"SET tim_barrel_location = ? WHERE isoform_id = ?",
+                        f"SET {location_col} = ? WHERE isoform_id = ?",
                         (json.dumps(loc), row["isoform_id"]),
                     )
                     conn.commit()
@@ -207,7 +222,7 @@ class DataCollector:
     # Phases
     # ------------------------------------------------------------------
 
-    def _phase1_domain_entries(self) -> List[TIMBarrelEntry]:
+    def _phase1_domain_entries(self) -> List[DomainEntry]:
         logger.info(
             "Phase 1: collecting %s entries from InterPro", self.domain.display_name
         )
@@ -233,7 +248,7 @@ class DataCollector:
                     "Phase 1: found %d entries in DB — skipping InterPro fetch",
                     len(existing),
                 )
-                return [TIMBarrelEntry(**row) for row in existing]
+                return [DomainEntry(**row) for row in existing]
 
             # Fetch only what is missing — extra_accessions and/or cathgene3d search
             if missing_extra:
@@ -254,7 +269,7 @@ class DataCollector:
             with get_connection(self.db_path) as conn:
                 upsert_domain_entries(conn, new_entries, table=self.domain.entries_table)
                 existing = get_all_domain_entries(conn, table=self.domain.entries_table)
-            return [TIMBarrelEntry(**row) for row in existing]
+            return [DomainEntry(**row) for row in existing]
 
         entries = self.interpro.collect_domain_entries(
             annotation=self.domain.interpro_annotation,
@@ -266,7 +281,7 @@ class DataCollector:
             upsert_domain_entries(conn, entries, table=self.domain.entries_table)
         return entries
 
-    def _phase2_proteins(self, entries: List[TIMBarrelEntry]) -> List[Protein]:
+    def _phase2_proteins(self, entries: List[DomainEntry]) -> List[Protein]:
         logger.info(
             "Phase 2: collecting %s proteins from InterPro", self.org.display_name
         )
@@ -276,7 +291,8 @@ class DataCollector:
             taxon_id=self.org.taxon_id,
         )
         with get_connection(self.db_path) as conn:
-            upsert_proteins(conn, proteins, table=self.protein_table)
+            upsert_proteins(conn, proteins, table=self.protein_table,
+                            accession_col=self.domain.accession_col)
         return proteins
 
     def _phase2b_deduplicate(self, proteins: List[Protein]) -> List[Protein]:
@@ -321,7 +337,9 @@ class DataCollector:
                 report.failed_proteins.append(protein.uniprot_id)
                 continue
             with get_connection(self.db_path) as conn:
-                upsert_isoforms(conn, isoforms, table=self.isoform_table)
+                upsert_isoforms(conn, isoforms, table=self.isoform_table,
+                                location_col=self.domain.location_col,
+                                sequence_col=self.domain.sequence_col)
             all_isoforms.extend(isoforms)
 
         return all_isoforms

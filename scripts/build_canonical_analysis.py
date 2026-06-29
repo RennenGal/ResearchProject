@@ -25,6 +25,7 @@ Usage
     python scripts/build_canonical_analysis.py --rebuild   # DROP and recreate
 """
 
+import argparse
 import json
 import logging
 import sqlite3
@@ -32,6 +33,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from protein_data_collector.config import DOMAINS, get_config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -94,20 +97,22 @@ def ensure_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def build(conn: sqlite3.Connection, rebuild: bool = False) -> int:
+def build(conn: sqlite3.Connection, rebuild: bool = False,
+          location_col: str = "tim_barrel_location",
+          sequence_col: str = "tim_barrel_sequence") -> int:
     if rebuild:
         conn.execute(f"DELETE FROM {_TABLE}")
         conn.commit()
         logger.info("Cleared existing rows from %s", _TABLE)
 
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT
             iso.uniprot_id,
             p.gene_name,
             iso.sequence,
             iso.sequence_length,
-            iso.tim_barrel_location,
-            iso.tim_barrel_sequence,
+            iso.{location_col},
+            iso.{sequence_col},
             iso.exon_annotations
         FROM isoforms iso
         JOIN proteins p ON p.uniprot_id = iso.uniprot_id
@@ -136,7 +141,7 @@ def build(conn: sqlite3.Connection, rebuild: bool = False) -> int:
                 if domain_sequence is None and domain_start and domain_end and seq:
                     domain_sequence = seq[domain_start - 1:domain_end]
             except (json.JSONDecodeError, TypeError):
-                logger.warning("Bad tim_barrel_location for %s: %s", uid, tb_loc_raw)
+                logger.warning("Bad domain location for %s: %s", uid, tb_loc_raw)
 
         # Reformat exon annotations
         exon_ann_out = None
@@ -208,11 +213,48 @@ def print_summary(conn: sqlite3.Connection) -> None:
 # Pipeline entry point
 # ---------------------------------------------------------------------------
 
-def run(db_path: str) -> None:
+def run(db_path: str, domain: str = "tim_barrel") -> None:
+    domain_cfg = DOMAINS[domain]
+    conn = sqlite3.connect(db_path)
+    ensure_table(conn)
+    build(conn, rebuild=False,
+          location_col=domain_cfg.location_col,
+          sequence_col=domain_cfg.sequence_col)
+    print_summary(conn)
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Build canonical_analysis from isoforms + proteins"
+    )
+    parser.add_argument("--db",       default=None)
+    parser.add_argument("--rebuild",  action="store_true",
+                        help="Clear existing rows and repopulate")
+    parser.add_argument("--domain",   default="tim_barrel",
+                        help="Domain type (default: tim_barrel)")
+    parser.add_argument("--log-level", default="INFO")
+    args = parser.parse_args()
+
+    logging.getLogger().setLevel(getattr(logging, args.log_level.upper(), logging.INFO))
+
+    db_path = args.db or get_config().db_path
+    domain_name = getattr(args, "domain", "tim_barrel")
+    domain_cfg = DOMAINS[domain_name]
     conn = sqlite3.connect(db_path)
 
     ensure_table(conn)
-    build(conn, rebuild=False)
+    build(conn, rebuild=args.rebuild,
+          location_col=domain_cfg.location_col,
+          sequence_col=domain_cfg.sequence_col)
     print_summary(conn)
 
     conn.close()
+
+
+if __name__ == "__main__":
+    main()

@@ -51,9 +51,10 @@ class QueryEngine:
             return [dict(r) for r in rows]
 
     def get_proteins_by_family(self, accession: str) -> List[Dict[str, Any]]:
+        accession_col = self.domain.accession_col
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
-                f"SELECT * FROM {self.protein_table} WHERE tim_barrel_accession = ? ORDER BY uniprot_id",
+                f"SELECT * FROM {self.protein_table} WHERE {accession_col} = ? ORDER BY uniprot_id",
                 (accession,),
             ).fetchall()
             return [dict(r) for r in rows]
@@ -70,19 +71,21 @@ class QueryEngine:
     # ------------------------------------------------------------------
 
     def get_isoforms_for_protein(self, uniprot_id: str) -> List[Dict[str, Any]]:
+        location_col = self.domain.location_col
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
                 f"SELECT * FROM {self.isoform_table} WHERE uniprot_id = ? ORDER BY is_canonical DESC, isoform_id",
                 (uniprot_id,),
             ).fetchall()
-            return [_deserialize_isoform(dict(r)) for r in rows]
+            return [_deserialize_isoform(dict(r), location_col=location_col) for r in rows]
 
     def get_all_isoforms(self) -> List[Dict[str, Any]]:
+        location_col = self.domain.location_col
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
                 f"SELECT * FROM {self.isoform_table} ORDER BY uniprot_id, is_canonical DESC"
             ).fetchall()
-            return [_deserialize_isoform(dict(r)) for r in rows]
+            return [_deserialize_isoform(dict(r), location_col=location_col) for r in rows]
 
     def get_proteins_with_alternative_isoforms(self) -> List[Dict[str, Any]]:
         """Return proteins that have at least one non-canonical isoform."""
@@ -101,14 +104,16 @@ class QueryEngine:
 
     def get_isoforms_with_domain(self) -> List[Dict[str, Any]]:
         """Return all isoforms that have a resolved domain location."""
+        location_col = self.domain.location_col
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
-                f"SELECT * FROM {self.isoform_table} WHERE tim_barrel_location IS NOT NULL"
+                f"SELECT * FROM {self.isoform_table} WHERE {location_col} IS NOT NULL"
             ).fetchall()
-            return [_deserialize_isoform(dict(r)) for r in rows]
+            return [_deserialize_isoform(dict(r), location_col=location_col) for r in rows]
 
     def get_isoforms_with_splice_variants(self) -> List[Dict[str, Any]]:
         """Return non-canonical isoforms that have at least one splice variant."""
+        location_col = self.domain.location_col
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
                 f"""
@@ -119,7 +124,7 @@ class QueryEngine:
                 ORDER BY uniprot_id
                 """
             ).fetchall()
-            return [_deserialize_isoform(dict(r)) for r in rows]
+            return [_deserialize_isoform(dict(r), location_col=location_col) for r in rows]
 
     # ------------------------------------------------------------------
     # Summary
@@ -152,9 +157,9 @@ class QueryEngine:
 # Helper
 # ---------------------------------------------------------------------------
 
-def _deserialize_isoform(row: Dict[str, Any]) -> Dict[str, Any]:
+def _deserialize_isoform(row: Dict[str, Any], location_col: str = "tim_barrel_location") -> Dict[str, Any]:
     """Parse JSON columns back to Python objects."""
-    for col in ("exon_annotations", "splice_variants", "tim_barrel_location"):
+    for col in ("exon_annotations", "splice_variants", location_col):
         val = row.get(col)
         if isinstance(val, str):
             try:

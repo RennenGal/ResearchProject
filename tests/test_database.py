@@ -44,7 +44,7 @@ def entry():
 def protein():
     return Protein(
         uniprot_id="P04637",
-        tim_barrel_accession="PF00394",
+        domain_accession="PF00394",
         protein_name="Cellular tumor antigen p53",
         gene_name="TP53",
         organism="Homo sapiens",
@@ -64,8 +64,8 @@ def isoform():
         is_canonical=True,
         sequence=_SEQ300,
         sequence_length=300,
-        tim_barrel_location={"domain_id": "PF00394", "start": 50, "end": 280,
-                             "length": 231, "source": "interpro_api"},
+        domain_location={"domain_id": "PF00394", "start": 50, "end": 280,
+                         "length": 231, "source": "interpro_api"},
         ensembl_transcript_id="ENSG00000141510",
     )
 

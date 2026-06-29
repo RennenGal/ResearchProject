@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import List, Optional
 
-from ..models.entities import TIMBarrelEntry, Protein, Isoform
+from ..models.entities import DomainEntry, TIMBarrelEntry, Protein, Isoform
 
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
 
 def upsert_domain_entry(
     conn: sqlite3.Connection,
-    entry: TIMBarrelEntry,
+    entry: DomainEntry,
     table: str = "entries",
 ) -> None:
     conn.execute(
@@ -51,15 +51,16 @@ def upsert_protein(
     conn: sqlite3.Connection,
     protein: Protein,
     table: str = "proteins",
+    accession_col: str = "tim_barrel_accession",
 ) -> None:
     conn.execute(
         f"""
         INSERT OR REPLACE INTO {table}
-            (uniprot_id, tim_barrel_accession, protein_name, gene_name,
+            (uniprot_id, {accession_col}, protein_name, gene_name,
              organism, reviewed, protein_existence, annotation_score, canonical_uniprot_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (protein.uniprot_id, protein.tim_barrel_accession, protein.protein_name,
+        (protein.uniprot_id, protein.domain_accession, protein.protein_name,
          protein.gene_name, protein.organism,
          int(protein.reviewed) if protein.reviewed is not None else None,
          protein.protein_existence, protein.annotation_score, protein.canonical_uniprot_id),
@@ -151,13 +152,15 @@ def upsert_isoform(
     conn: sqlite3.Connection,
     isoform: Isoform,
     table: str = "isoforms",
+    location_col: str = "tim_barrel_location",
+    sequence_col: str = "tim_barrel_sequence",
 ) -> None:
     conn.execute(
         f"""
         INSERT OR REPLACE INTO {table}
             (isoform_id, uniprot_id, is_canonical, sequence, sequence_length,
              is_fragment, exon_count, exon_annotations, splice_variants,
-             tim_barrel_location, tim_barrel_sequence, ensembl_transcript_id, alphafold_id)
+             {location_col}, {sequence_col}, ensembl_transcript_id, alphafold_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -170,8 +173,8 @@ def upsert_isoform(
             isoform.exon_count,
             json.dumps(isoform.exon_annotations) if isoform.exon_annotations is not None else None,
             json.dumps(isoform.splice_variants) if isoform.splice_variants is not None else None,
-            json.dumps(isoform.tim_barrel_location) if isoform.tim_barrel_location is not None else None,
-            isoform.tim_barrel_sequence,
+            json.dumps(isoform.domain_location) if isoform.domain_location is not None else None,
+            isoform.domain_sequence,
             isoform.ensembl_transcript_id,
             isoform.alphafold_id,
         ),
@@ -206,7 +209,7 @@ def get_all_isoforms(
 
 def upsert_domain_entries(
     conn: sqlite3.Connection,
-    entries: List[TIMBarrelEntry],
+    entries: List[DomainEntry],
     table: str = "entries",
 ) -> None:
     for entry in entries:
@@ -218,9 +221,10 @@ def upsert_proteins(
     conn: sqlite3.Connection,
     proteins: List[Protein],
     table: str = "proteins",
+    accession_col: str = "tim_barrel_accession",
 ) -> None:
     for protein in proteins:
-        upsert_protein(conn, protein, table=table)
+        upsert_protein(conn, protein, table=table, accession_col=accession_col)
     conn.commit()
 
 
@@ -228,9 +232,12 @@ def upsert_isoforms(
     conn: sqlite3.Connection,
     isoforms: List[Isoform],
     table: str = "isoforms",
+    location_col: str = "tim_barrel_location",
+    sequence_col: str = "tim_barrel_sequence",
 ) -> None:
     for isoform in isoforms:
-        upsert_isoform(conn, isoform, table=table)
+        upsert_isoform(conn, isoform, table=table,
+                       location_col=location_col, sequence_col=sequence_col)
     conn.commit()
 
 

@@ -57,30 +57,30 @@ class TestIsoform:
 
     def test_tim_barrel_bounds_ok(self):
         iso = Isoform(**{**self._BASE,
-                         "tim_barrel_location": {"start": 1, "end": 15}})
-        assert iso.tim_barrel_location["end"] == 15
+                         "domain_location": {"start": 1, "end": 15}})
+        assert iso.domain_location["end"] == 15
 
     def test_tim_barrel_end_exceeds_length(self):
         with pytest.raises(ValidationError, match="exceeds sequence length"):
             Isoform(**{**self._BASE,
-                       "tim_barrel_location": {"start": 1, "end": 999}})
+                       "domain_location": {"start": 1, "end": 999}})
 
     def test_tim_barrel_start_gte_end(self):
         with pytest.raises(ValidationError, match="start .* >= end"):
             Isoform(**{**self._BASE,
-                       "tim_barrel_location": {"start": 10, "end": 5}})
+                       "domain_location": {"start": 10, "end": 5}})
 
     def test_tim_barrel_missing_coords_allowed(self):
         # Partial location with zeros is treated as unknown
         iso = Isoform(**{**self._BASE,
-                         "tim_barrel_location": {"start": 0, "end": 0}})
-        assert iso.tim_barrel_location is not None
+                         "domain_location": {"start": 0, "end": 0}})
+        assert iso.domain_location is not None
 
     def test_optional_fields_default_none(self):
         iso = Isoform(**self._BASE)
         assert iso.exon_annotations is None
         assert iso.splice_variants is None
-        assert iso.tim_barrel_location is None
+        assert iso.domain_location is None
         assert iso.ensembl_transcript_id is None
 
     def test_is_fragment_auto_set_for_short_sequence(self):
@@ -101,18 +101,18 @@ class TestIsoform:
         loc = {"domain_id": "IPR000001", "start": 11, "end": 30, "length": 20, "source": "interpro_api"}
         iso = Isoform(isoform_id="P00001-1", uniprot_id="P00001",
                       sequence=long_seq, sequence_length=300,
-                      tim_barrel_location=loc)
-        assert iso.tim_barrel_sequence == long_seq[10:30]
-        assert len(iso.tim_barrel_sequence) == 20
+                      domain_location=loc)
+        assert iso.domain_sequence == long_seq[10:30]
+        assert len(iso.domain_sequence) == 20
 
     def test_tim_barrel_sequence_none_for_fragment(self):
         short_seq = "ACDEFGHIKL" * 5  # 50 aa
         loc = {"domain_id": "IPR000001", "start": 1, "end": 50, "length": 50, "source": "interpro_api"}
         iso = Isoform(isoform_id="P00001-1", uniprot_id="P00001",
                       sequence=short_seq, sequence_length=50,
-                      tim_barrel_location=loc)
+                      domain_location=loc)
         assert iso.is_fragment is True
-        assert iso.tim_barrel_sequence is None
+        assert iso.domain_sequence is None
 
     def test_fragment_threshold_value(self):
         assert _FRAGMENT_LENGTH_THRESHOLD == 200

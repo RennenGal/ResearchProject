@@ -93,7 +93,7 @@ def tim_barrel_entry():
 def protein():
     return Protein(
         uniprot_id="P04637",
-        tim_barrel_accession="PF00394",
+        domain_accession="PF00394",
         protein_name="Cellular tumor antigen p53",
         gene_name="TP53",
         organism="Homo sapiens",

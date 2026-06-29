@@ -1,9 +1,10 @@
 """Database schema — SQL DDL for TIM barrel / Homo sapiens tables."""
 
 import sqlite3
+from typing import Optional
 
 
-_CREATE_TABLES = """
+_CREATE_TABLES_TEMPLATE = """
 -- ============================================================
 -- Domain entries
 -- ============================================================
@@ -23,7 +24,7 @@ CREATE TABLE IF NOT EXISTS entries (
 
 CREATE TABLE IF NOT EXISTS proteins (
     uniprot_id           TEXT PRIMARY KEY,
-    tim_barrel_accession TEXT NOT NULL,
+    {accession_col}      TEXT NOT NULL,
     protein_name         TEXT,
     gene_name            TEXT,
     organism             TEXT,
@@ -32,7 +33,7 @@ CREATE TABLE IF NOT EXISTS proteins (
     annotation_score     INTEGER,
     canonical_uniprot_id TEXT,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tim_barrel_accession) REFERENCES entries(accession) ON DELETE CASCADE,
+    FOREIGN KEY ({accession_col}) REFERENCES entries(accession) ON DELETE CASCADE,
     FOREIGN KEY (canonical_uniprot_id) REFERENCES proteins(uniprot_id)
 );
 
@@ -47,8 +48,8 @@ CREATE TABLE IF NOT EXISTS isoforms (
     exon_count          INTEGER,
     exon_annotations    TEXT,
     splice_variants     TEXT,
-    tim_barrel_location TEXT,
-    tim_barrel_sequence TEXT,
+    {location_col}      TEXT,
+    {sequence_col}      TEXT,
     ensembl_transcript_id     TEXT,
     alphafold_id        TEXT,
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -84,7 +85,7 @@ CREATE TABLE IF NOT EXISTS affected_isoforms (
 );
 
 CREATE INDEX IF NOT EXISTS idx_proteins_canonical ON proteins(canonical_uniprot_id);
-CREATE INDEX IF NOT EXISTS idx_proteins_entry     ON proteins(tim_barrel_accession);
+CREATE INDEX IF NOT EXISTS idx_proteins_entry     ON proteins({accession_col});
 CREATE INDEX IF NOT EXISTS idx_isoforms_uniprot   ON isoforms(uniprot_id);
 CREATE INDEX IF NOT EXISTS idx_isoforms_canonical ON isoforms(uniprot_id, is_canonical);
 CREATE INDEX IF NOT EXISTS idx_isoforms_length    ON isoforms(sequence_length);
@@ -152,8 +153,8 @@ CREATE INDEX IF NOT EXISTS idx_enst_aff_ident ON ensembl_affected(alignment_iden
 -- ============================================================
 -- TIM barrel canonical analysis — Homo sapiens
 -- One row per canonical protein, used for motif annotation.
--- exon_annotations: [{exon, start, end}] in full-sequence coords (1-based, inclusive)
--- motif_annotations: [{motif, start, end, beta_start, beta_end, alpha_start, alpha_end}] x8
+-- exon_annotations: [{{exon, start, end}}] in full-sequence coords (1-based, inclusive)
+-- motif_annotations: [{{motif, start, end, beta_start, beta_end, alpha_start, alpha_end}}] x8
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS canonical_analysis (
@@ -185,7 +186,32 @@ SELECT * FROM proteins WHERE canonical_uniprot_id IS NULL;
 """
 
 
-def init_db(conn: sqlite3.Connection) -> None:
-    """Create all tables, indexes, and triggers if they do not already exist."""
-    conn.executescript(_CREATE_TABLES)
+def init_db(conn: sqlite3.Connection, domain_config=None) -> None:
+    """Create all tables, indexes, and triggers if they do not already exist.
+
+    Parameters
+    ----------
+    conn:
+        Open SQLite connection.
+    domain_config:
+        Optional DomainConfig instance. When provided, the column names
+        ``accession_col``, ``location_col``, and ``sequence_col`` from the
+        config are used in the DDL. When None (default), falls back to the
+        legacy TIM barrel column names to preserve backward compatibility.
+    """
+    if domain_config is not None:
+        accession_col = domain_config.accession_col
+        location_col  = domain_config.location_col
+        sequence_col  = domain_config.sequence_col
+    else:
+        accession_col = "tim_barrel_accession"
+        location_col  = "tim_barrel_location"
+        sequence_col  = "tim_barrel_sequence"
+
+    ddl = _CREATE_TABLES_TEMPLATE.format(
+        accession_col=accession_col,
+        location_col=location_col,
+        sequence_col=sequence_col,
+    )
+    conn.executescript(ddl)
     conn.commit()

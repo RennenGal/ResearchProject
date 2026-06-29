@@ -30,12 +30,12 @@ def seeded_db(db):
     """Database with one family, one protein, two isoforms (canonical + alternative)."""
     entry = TIMBarrelEntry(accession="PF00394", entry_type="pfam",
                            name="TIM barrel", domain_annotation="TIM barrel")
-    protein = Protein(uniprot_id="P04637", tim_barrel_accession="PF00394",
+    protein = Protein(uniprot_id="P04637", domain_accession="PF00394",
                       protein_name="p53", gene_name="TP53", reviewed=True)
     canonical = Isoform(
         isoform_id="P04637-1", uniprot_id="P04637", is_canonical=True,
         sequence="ACDEFGHIKLMNPQRSTVWY", sequence_length=20,
-        tim_barrel_location={"start": 1, "end": 18, "source": "interpro_api"},
+        domain_location={"start": 1, "end": 18, "source": "interpro_api"},
         ensembl_transcript_id="ENSG00000141510",
     )
     alt = Isoform(

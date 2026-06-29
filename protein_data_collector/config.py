@@ -12,6 +12,9 @@ class DomainConfig:
     interpro_annotation: str            # term for InterPro annotation= query (exact match)
     entries_table: str                  # e.g. "entries"
     table_prefix: str                   # e.g. "" — used to derive organism table names
+    accession_col: str = ""             # DB column name for domain accession on proteins table
+    location_col: str = ""              # DB column name for domain location on isoforms table
+    sequence_col: str = ""              # DB column name for domain sequence on isoforms table
     interpro_search: str = ""           # term for InterPro search= query (text match, fallback)
     cathgene3d_search: str = ""         # search= query for CATH Gene3D (catches structurally-classified entries with no IPR parent)
     extra_accessions: tuple = ()        # additional accessions to always include; never removed by cleanup
@@ -40,6 +43,9 @@ DOMAINS: Dict[str, DomainConfig] = {
         interpro_annotation="TIM barrel",
         entries_table="entries",
         table_prefix="",
+        accession_col="tim_barrel_accession",
+        location_col="tim_barrel_location",
+        sequence_col="tim_barrel_sequence",
         cathgene3d_search="3.20.20",
         extra_accessions=(
             "IPR011060",

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Re-query InterPro for ALL canonical proteins and store the complete list of
-domain instances in isoforms.tim_barrel_location (replacing the existing
+domain instances in isoforms.{location_col} (replacing the existing
 single-dict format with a list).
 
 This is required before rebuilding canonical_analysis with the new
-(uniprot_id, domain_index) primary key so that proteins with two TIM barrel
-domains are represented by two rows rather than one.
+(uniprot_id, domain_index) primary key so that proteins with two domain
+instances are represented by two rows rather than one.
 
 Usage
 -----
@@ -24,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from protein_data_collector.api.interpro_client import InterProClient
+from protein_data_collector.config import DOMAINS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,16 +34,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _run_backfill(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
-    rows = conn.execute("""
-        SELECT iso.isoform_id, iso.uniprot_id, p.tim_barrel_accession,
-               iso.tim_barrel_location
+def _run_backfill(conn: sqlite3.Connection, accession_col: str, location_col: str,
+                  dry_run: bool = False) -> dict:
+    rows = conn.execute(f"""
+        SELECT iso.isoform_id, iso.uniprot_id, p.{accession_col},
+               iso.{location_col}
         FROM   isoforms iso
         JOIN   proteins p ON p.uniprot_id = iso.uniprot_id
         WHERE  iso.is_canonical          = 1
           AND  iso.is_fragment           = 0
           AND  p.canonical_uniprot_id   IS NULL
-          AND  p.tim_barrel_accession   IS NOT NULL
+          AND  p.{accession_col}        IS NOT NULL
         ORDER BY iso.uniprot_id
     """).fetchall()
 
@@ -52,7 +54,11 @@ def _run_backfill(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
     client = InterProClient()
     stats = {"updated": 0, "no_locations": 0, "multi_domain": 0, "errors": 0}
 
-    for i, (isoform_id, uniprot_id, accession, existing_raw) in enumerate(rows, 1):
+    for i, row in enumerate(rows, 1):
+        isoform_id  = row[0]
+        uniprot_id  = row[1]
+        accession   = row[2]
+        existing_raw = row[3]
         try:
             locations = client.get_domain_boundaries(uniprot_id, accession)
         except Exception as e:
@@ -68,7 +74,7 @@ def _run_backfill(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
         if len(locations) > 1:
             stats["multi_domain"] += 1
             logger.info(
-                "Multi-domain: %s has %d TIM barrel instances: %s",
+                "Multi-domain: %s has %d domain instances: %s",
                 uniprot_id,
                 len(locations),
                 [(d["start"], d["end"]) for d in locations],
@@ -78,7 +84,7 @@ def _run_backfill(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
 
         if not dry_run:
             conn.execute(
-                "UPDATE isoforms SET tim_barrel_location = ? WHERE isoform_id = ?",
+                f"UPDATE isoforms SET {location_col} = ? WHERE isoform_id = ?",
                 (new_json, isoform_id),
             )
 
@@ -95,10 +101,15 @@ def _run_backfill(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
     return stats
 
 
-def run(db_path: str) -> None:
+def run(db_path: str, domain: str = "tim_barrel") -> None:
+    domain_cfg = DOMAINS[domain]
+    accession_col = domain_cfg.accession_col
+    location_col  = domain_cfg.location_col
+
     conn = sqlite3.connect(db_path)
 
-    stats = _run_backfill(conn, dry_run=False)
+    stats = _run_backfill(conn, accession_col=accession_col, location_col=location_col,
+                          dry_run=False)
 
     print(f"\n{'='*55}")
     print("  Domain location backfill summary")
@@ -110,3 +121,22 @@ def run(db_path: str) -> None:
     print(f"{'='*55}")
 
     conn.close()
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Backfill domain locations")
+    parser.add_argument("--db", default="db/protein_data.db")
+    parser.add_argument("--domain", default="tim_barrel")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    if args.dry_run:
+        domain_cfg = DOMAINS[args.domain]
+        conn = sqlite3.connect(args.db)
+        stats = _run_backfill(conn, accession_col=domain_cfg.accession_col,
+                              location_col=domain_cfg.location_col, dry_run=True)
+        conn.close()
+        print(stats)
+    else:
+        run(args.db, domain=args.domain)
