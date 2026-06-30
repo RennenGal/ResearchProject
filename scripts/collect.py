@@ -13,12 +13,10 @@ Phase 6  — Backfill domain locations
 Phase 7  — Deduplicate proteins by gene_name
 Phase 8  — Build affected_isoforms table + backfill fragment isoforms
 Phase 9  — Build canonical_analysis table
-Phase 10 — Annotate TIM barrel motifs (AlphaFold + pydssp)
-Phase 11 — Collect Ensembl transcripts + alignment analysis + backfill exon data
-Phase 12 — Backfill isoform exon junction data (UniProt isoforms)
-Phase 13 — Build analysis_proteins table and views
-Phase 14 — (Reserved for future use)
-Phase 15 — (Reserved for future use)
+Phase 10 — Annotate TIM barrel motifs (AlphaFold + pydssp)  [tim_barrel only]
+Phase 11 — Collect Ensembl transcripts + alignment analysis + backfill exon data  [tim_barrel only]
+Phase 12 — Backfill isoform exon junction data (UniProt isoforms)  [tim_barrel only]
+Phase 13 — Build analysis_proteins table and views  [tim_barrel only]
 
 Usage
 -----
@@ -144,21 +142,30 @@ def main() -> None:
         logger.info("=== Phase 9: Build canonical_analysis ===")
         run_build_canonical_analysis(db_path, domain=args.domain)
 
-        # Phase 10: Annotate motifs
-        logger.info("=== Phase 10: Annotate motifs ===")
-        run_annotate_motifs(db_path)
+        # Phases 10–13: TIM barrel-specific structural annotation.
+        # These phases assume (βα)₈ repeat geometry and cannot run for other domains.
+        if args.domain == "tim_barrel":
+            # Phase 10: Annotate motifs
+            logger.info("=== Phase 10: Annotate motifs ===")
+            run_annotate_motifs(db_path)
 
-        # Phase 11: Collect Ensembl + backfill exon data
-        logger.info("=== Phase 11: Collect Ensembl transcripts ===")
-        run_collect_ensembl(db_path)
+            # Phase 11: Collect Ensembl + backfill exon data
+            logger.info("=== Phase 11: Collect Ensembl transcripts ===")
+            run_collect_ensembl(db_path)
 
-        # Phase 12: Backfill isoform exon junctions
-        logger.info("=== Phase 12: Backfill isoform exon junctions ===")
-        run_backfill_isoform_exons(db_path)
+            # Phase 12: Backfill isoform exon junctions
+            logger.info("=== Phase 12: Backfill isoform exon junctions ===")
+            run_backfill_isoform_exons(db_path)
 
-        # Phase 13: Build analysis_proteins table
-        logger.info("=== Phase 13: Build analysis_proteins table ===")
-        run_create_analysis_table(db_path)
+            # Phase 13: Build analysis_proteins table
+            logger.info("=== Phase 13: Build analysis_proteins table ===")
+            run_create_analysis_table(db_path)
+        else:
+            logger.info(
+                "Skipping Phases 10–13 (structural annotation is TIM barrel-specific). "
+                "Implement a domain-specific annotator and call it here for domain '%s'.",
+                args.domain,
+            )
 
         logger.info("Pipeline complete.")
 

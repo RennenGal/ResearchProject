@@ -43,10 +43,10 @@ python scripts/collect.py [--domain tim_barrel] [--organism homo_sapiens] [--db 
 | 7 | Gene-level deduplication (keep best representative per gene) |
 | 8 | Build `affected_isoforms` table (VSP-based AS detection) + fragment isoforms |
 | 9 | Build `canonical_analysis` table |
-| 10 | Annotate (βα)₈ motifs via AlphaFold + DSSP |
-| 11 | Collect Ensembl transcripts + alignment analysis + exon boundary data |
-| 12 | Backfill isoform exon junction data (UniProt isoforms) |
-| 13 | Build final `analysis_proteins` table and views |
+| 10 | *(tim_barrel only)* Annotate (βα)₈ motifs via AlphaFold + DSSP |
+| 11 | *(tim_barrel only)* Collect Ensembl transcripts + alignment analysis + exon boundaries |
+| 12 | *(tim_barrel only)* Backfill isoform exon junction data |
+| 13 | *(tim_barrel only)* Build final `analysis_proteins` table and views |
 
 ### Partial / maintenance modes
 
