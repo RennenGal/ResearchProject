@@ -102,7 +102,6 @@ After collection, generate figures and results:
 ```bash
 python scripts/run_alternative_analysis.py   # all figures → figures/alt/
 python scripts/write_results_md.py           # regenerate Results.md
-python scripts/plot_hyal1_heatmap.py         # HYAL1 per-isoform disruption heatmap
 ```
 
 See `Results.md` for findings and `Statistical-Framework.md` for the formal statistical definitions.
@@ -255,7 +254,6 @@ scripts/
   Analysis scripts (run after collection):
     run_alternative_analysis.py   Generate all figures → figures/alt/
     write_results_md.py           Regenerate Results.md
-    plot_hyal1_heatmap.py         HYAL1 per-isoform disruption heatmap
 
 tests/
   conftest.py
